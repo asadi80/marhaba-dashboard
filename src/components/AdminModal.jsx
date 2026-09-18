@@ -51,7 +51,7 @@ export default function AdminModal({ onClose, onSave, isSuperAdmin }) {
     name: '',
     email: '',
     password: '',
-    phoneNumber: '',
+    phone_number: '',
     role: 'admin',
   });
   const [loading, setLoading] = useState(false);
@@ -108,8 +108,8 @@ export default function AdminModal({ onClose, onSave, isSuperAdmin }) {
           required
           type="tel"
           className={inputCls}
-          value={form.phoneNumber}
-          onChange={set('phoneNumber')}
+          value={form.phone_number}
+          onChange={set('phone_number')}
           placeholder="+1 555 000 0000"
         />
       </Field>

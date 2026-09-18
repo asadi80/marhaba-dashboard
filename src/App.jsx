@@ -1,17 +1,29 @@
 // src/App.jsx
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import AdminDashboard from './pages/AdminDashboard';
-import UserDetailPage from './pages/UserDetailPage';
-import Login from './pages/Login';
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import Dashboard from "./pages/Dashboard";
+import UserDetailPage from "./pages/UserDetailPage";
+import DatabaseSchemaPage from "./pages/DatabaseSchemaPage";
+import DatabaseExplorer from "./pages/DatabaseExplorer";
+import Login from "./pages/Login";
 
 function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/admin" element={<AdminDashboard />} />
-        <Route path="/admin/user/:id" element={<UserDetailPage />} />
-        <Route path="/" element={<Navigate to="/admin" replace />} />
+        {/* Admin routes */}
+        <Route path="/admin" element={<Dashboard />} />
+        <Route path="/admin/users/:id" element={<UserDetailPage />} />
+
+        {/* Keep old route for backward compatibility if needed */}
+        <Route path="/user/:id" element={<UserDetailPage />} />
+
+        <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/login" element={<Login />} />
+        <Route path="/database-schema" element={<DatabaseSchemaPage />} />
+        <Route path="/database" element={<DatabaseExplorer />} />
+
+        {/* Redirect root to admin */}
+        <Route path="/" element={<Navigate to="/login" replace />} />
       </Routes>
     </BrowserRouter>
   );

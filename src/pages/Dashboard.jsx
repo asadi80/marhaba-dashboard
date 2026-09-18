@@ -1,11 +1,11 @@
-// src/pages/AdminDashboard.jsx
+// src/pages/Dashboard.jsx
 import { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import LoadingScreen from "../components/LoadingScreen";
-import { getAuthToken, authFetch } from "../utils/auth";
+import { getAccessToken, authFetch, clearAuthData, getUser } from "../utils/auth";
 import AdminModal from "../components/AdminModal";
 
-export default function AdminDashboard() {
+export default function Dashboard() {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("all");
   const [users, setUsers] = useState([]);
@@ -15,12 +15,18 @@ export default function AdminDashboard() {
   const [currentUser, setCurrentUser] = useState(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [notification, setNotification] = useState(null);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
+  // ─── Check auth on mount ──────────────────────────────────────────────────
   useEffect(() => {
+    const token = getAccessToken();
+    if (!token) {
+      navigate('/login');
+      return;
+    }
     fetchCurrentUser();
-  }, []);
+  }, [navigate]);
 
+  // ─── Fetch data when user and tab change ────────────────────────────────
   useEffect(() => {
     if (currentUser && ["admin", "super_admin"].includes(currentUser.role)) {
       fetchStats();
@@ -28,93 +34,180 @@ export default function AdminDashboard() {
     }
   }, [currentUser, activeTab]);
 
+  // ─── Fetch current user ──────────────────────────────────────────────────
   const fetchCurrentUser = async () => {
     try {
-      const res = await authFetch("/api/auth/me");
-      if (!res) return;
+      const res = await authFetch("https://api.mar-haba.ly/api/v1/auth/me");
+      
+      if (!res) {
+        throw new Error("No response from server");
+      }
+
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message);
-      setCurrentUser(data.user);
-      if (!["admin", "super_admin"].includes(data.user.role)) navigate("/");
-    } catch {
+      console.log("Current user response:", data);
+      
+      if (!res.ok) {
+        throw new Error(data.message || "Failed to fetch user");
+      }
+
+      // ✅ FIX: User is at data.data.user, not data.user
+      const user = data.data?.user || data.user;
+      
+      if (!user) {
+        throw new Error("User data not found in response");
+      }
+
+      setCurrentUser(user);
+      
+      // Redirect if not admin
+      if (!["admin", "super_admin"].includes(user.role)) {
+        navigate("/");
+      }
+    } catch (error) {
+      console.error("Auth error:", error);
+      // Clear invalid tokens and redirect to login
+      clearAuthData();
       navigate("/login");
     }
   };
 
+  // ─── Fetch stats ──────────────────────────────────────────────────────────
   const fetchStats = async () => {
     try {
-      const res = await authFetch("/api/admin/stats");
+      const res = await authFetch("https://api.mar-haba.ly/api/v1/dashboard/stats");
+      
+      if (!res) {
+        throw new Error("No response from server");
+      }
+
       const data = await res.json();
-      if (data.success) setStats(data.stats);
-    } catch (e) {
-      console.error(e);
+      console.log("Stats response:", data);
+      
+      // ✅ FIX: Stats might be at data.data or data.stats
+      if (data.success) {
+        const statsData = data.data || data.stats;
+        setStats(statsData);
+      } else {
+        throw new Error(data.message || "Failed to fetch stats");
+      }
+    } catch (error) {
+      console.error("Stats fetch error:", error);
+      showNotification("Error fetching stats", "error");
     }
   };
 
+  // ─── Fetch users ──────────────────────────────────────────────────────────
   const fetchUsers = async () => {
     setLoading(true);
     try {
       const roleParam = activeTab !== "all" ? `?role=${activeTab}` : "";
-      const res = await authFetch(`/api/admin/users${roleParam}`);
-      const data = await res.json();
-      if (data.success) {
-        setUsers(data.users);
-        setUsersByRole(data.usersByRole);
+      const res = await authFetch(`https://api.mar-haba.ly/api/v1/dashboard/users${roleParam}`);
+      
+      if (!res) {
+        throw new Error("No response from server");
       }
-    } catch {
+
+      const data = await res.json();
+      console.log("Users response:", data);
+      
+      // ✅ FIX: Users might be at data.data or data.users
+      if (data.success) {
+        const usersData = data.data?.users || data.users || [];
+        const usersByRoleData = data.data?.usersByRole || data.usersByRole || {};
+        
+        setUsers(usersData);
+        setUsersByRole(usersByRoleData);
+      } else {
+        throw new Error(data.message || "Failed to fetch users");
+      }
+    } catch (error) {
+      console.error("Users fetch error:", error);
       showNotification("Error fetching users", "error");
+      setUsers([]);
+      setUsersByRole({});
     }
     setLoading(false);
   };
 
-  const handleCreateAdmin = async (formData) => {
-    try {
-      const res = await authFetch("/api/admin/users", {
+  // ─── Create admin ─────────────────────────────────────────────────────────
+const handleCreateAdmin = async (formData) => {
+  console.log("========== CREATE ADMIN ==========");
+  console.log("FORM DATA:", formData);
+  console.log("JSON:", JSON.stringify(formData, null, 2));
+
+  try {
+    const res = await authFetch(
+      "https://api.mar-haba.ly/api/v1/dashboard/user/createAdmin",
+      {
         method: "POST",
         body: JSON.stringify(formData),
-      });
-      const data = await res.json();
-      if (data.success) {
-        showNotification(data.message, "success");
-        setShowAddModal(false);
-        fetchUsers();
-        fetchStats();
-      } else {
-        showNotification(data.message, "error");
       }
-    } catch {
-      showNotification("Error creating admin", "error");
-    }
-  };
+    );
 
+    const data = await res.json();
+
+    console.log("CREATE ADMIN STATUS:", res.status);
+    console.log("CREATE ADMIN RESPONSE:", data);
+
+    if (data.success) {
+      showNotification(
+        data.message || "Admin created successfully",
+        "success"
+      );
+
+      setShowAddModal(false);
+      fetchUsers();
+      fetchStats();
+    } else {
+      const validationMessage = data.errors
+        ?.map((err) => `${err.field}: ${err.message}`)
+        .join(", ");
+
+      throw new Error(
+        validationMessage ||
+        data.message ||
+        "Failed to create admin"
+      );
+    }
+  } catch (error) {
+    console.error("Create admin error:", error);
+    showNotification(
+      error.message || "Error creating admin",
+      "error"
+    );
+  }
+};
+
+  // ─── Logout ────────────────────────────────────────────────────────────────
   const handleLogout = async () => {
     try {
-      await fetch("/api/auth/logout", { method: "POST" });
-      localStorage.removeItem("marhabaToken");
-      localStorage.removeItem("user");
-      localStorage.removeItem("tokenExpiry");
+      // Call logout endpoint if needed
+      await authFetch("https://api.mar-haba.ly/api/v1/auth/logout", {
+        method: "POST",
+      });
+    } catch (error) {
+      console.error("Logout error:", error);
+    } finally {
+      // Always clear local data
+      clearAuthData();
       navigate("/login");
-    } catch (e) {
-      console.error(e);
     }
   };
 
+  // ─── Notification helper ──────────────────────────────────────────────────
   const showNotification = (message, type) => {
     setNotification({ message, type });
     setTimeout(() => setNotification(null), 3000);
   };
 
-  const getDisplayUsers = () => {
-    if (activeTab === "all") return users;
-    if (activeTab === "user") return usersByRole.users || [];
-    if (activeTab === "host") return usersByRole.hosts || [];
-    if (activeTab === "admin") return usersByRole.admins || [];
-    if (activeTab === "super_admin") return usersByRole.super_admins || [];
-    return [];
-  };
+  // ─── Helper functions ─────────────────────────────────────────────────────
+ const getDisplayUsers = () => {
+  return Array.isArray(users) ? users : [];
+};
 
-  const displayUsers = getDisplayUsers();
+const displayUsers = getDisplayUsers();
 
+  // ─── Constants ─────────────────────────────────────────────────────────────
   const TABS = [
     { id: "all", label: "all users" },
     { id: "user", label: "regular users" },
@@ -149,7 +242,7 @@ export default function AdminDashboard() {
   ];
 
   const getAvatarStyle = (name) =>
-    AVATAR_PALETTE[name.charCodeAt(0) % AVATAR_PALETTE.length];
+    AVATAR_PALETTE[name?.charCodeAt(0) % AVATAR_PALETTE.length] || AVATAR_PALETTE[0];
 
   const roleBadge = (role) => {
     const map = {
@@ -171,8 +264,10 @@ export default function AdminDashboard() {
   const statusBadge = (status) => {
     const map = {
       confirmed: "bg-[#EAF3DE] text-[#27500A]",
+      active: "bg-[#EAF3DE] text-[#27500A]",
       pending: "bg-[#FAEEDA] text-[#633806]",
       suspended: "bg-[#FCEBEB] text-[#791F1F]",
+      blocked: "bg-[#FCEBEB] text-[#791F1F]",
     };
     return (
       <span
@@ -180,22 +275,24 @@ export default function AdminDashboard() {
           map[status] || "bg-gray-100 text-gray-700"
         }`}
       >
-        {status}
+        {status || "unknown"}
       </span>
     );
   };
 
+  // ─── Loading state ────────────────────────────────────────────────────────
   if (!currentUser) {
     return <LoadingScreen />;
   }
 
   const initials = currentUser.name
-    .split(" ")
+    ?.split(" ")
     .map((n) => n[0])
     .join("")
     .slice(0, 2)
-    .toUpperCase();
+    .toUpperCase() || "U";
 
+  // ─── Render ──────────────────────────────────────────────────────────────
   return (
     <>
       <style>{`
@@ -212,6 +309,7 @@ export default function AdminDashboard() {
       `}</style>
 
       <div className="min-h-screen bg-[#f7f6f2]">
+        {/* ─── Notification ───────────────────────────────────────────────── */}
         {notification && (
           <div
             className={`fixed top-4 right-4 z-50 max-w-xs px-5 py-3 rounded-lg text-sm text-white notif-animate bg-[#1a1a2e] border-l-4 ${
@@ -224,7 +322,7 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* ── Navbar ── */}
+        {/* ─── Navbar ────────────────────────────────────────────────────── */}
         <nav className="bg-[#1a1a2e] border-b border-[#e8c547]/20 px-4 sm:px-8">
           <div className="h-14 flex items-center justify-between gap-4">
             {/* Logo */}
@@ -243,7 +341,7 @@ export default function AdminDashboard() {
               مر<span style={{ fontWeight: 700, color: "#e8c547" }}>حبا</span>
             </Link>
 
-            {/* Tabs */}
+            {/* Tabs - Desktop */}
             <div className="hidden md:flex gap-0.5 flex-1 justify-center">
               {TABS.map((tab) => (
                 <button
@@ -283,7 +381,7 @@ export default function AdminDashboard() {
             </div>
           </div>
 
-          {/* Mobile tabs */}
+          {/* Tabs - Mobile */}
           <div className="md:hidden tabs-scroll overflow-x-auto flex gap-0.5 pb-2">
             {TABS.map((tab) => (
               <button
@@ -301,6 +399,7 @@ export default function AdminDashboard() {
           </div>
         </nav>
 
+        {/* ─── Main content ──────────────────────────────────────────────── */}
         <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
           {/* Stats */}
           {stats && (
@@ -312,7 +411,7 @@ export default function AdminDashboard() {
                   style={{ "--accent-color": s.accent }}
                 >
                   <div className="font-display italic font-light text-2xl sm:text-3xl text-[#111118] leading-none mb-1">
-                    {s.format ? s.format(stats[s.key]) : stats[s.key]}
+                    {s.format ? s.format(stats[s.key]) : stats[s.key] ?? 0}
                   </div>
                   <div className="text-[10px] sm:text-[11px] uppercase tracking-widest text-[#999]">
                     {s.label}
@@ -377,14 +476,15 @@ export default function AdminDashboard() {
                     {displayUsers.map((user) => {
                       const avi = getAvatarStyle(user.name);
                       const userInitials = user.name
-                        .split(" ")
+                        ?.split(" ")
                         .map((n) => n[0])
                         .join("")
                         .slice(0, 2)
-                        .toUpperCase();
+                        .toUpperCase() || "U";
+                      
                       return (
                         <tr
-                          key={user._id}
+                          key={user._id || user.id}
                           className="border-b border-black/[0.04] hover:bg-[#fafaf8] transition-colors last:border-0"
                         >
                           <td className="px-3 sm:px-4 py-3">
@@ -397,13 +497,13 @@ export default function AdminDashboard() {
                               </div>
                               <div className="min-w-0">
                                 <Link
-                                  to={`/admin/user/${user._id}`}
+                                  to={`/user/${user._id || user.id}`}
                                   className="user-name-link block truncate max-w-[120px] sm:max-w-none"
                                 >
                                   {user.name}
                                 </Link>
                                 <div className="text-[11px] text-[#999]">
-                                  #{user._id.slice(-6)}
+                                  #{String(user._id || user.id).slice(-6)}
                                 </div>
                               </div>
                             </div>
@@ -413,7 +513,7 @@ export default function AdminDashboard() {
                               {user.email}
                             </div>
                             <div className="text-[11px] text-[#999]">
-                              {user.phoneNumber}
+                              {user.phone_number || user.phone_number || "—"}
                             </div>
                           </td>
                           <td className="px-3 sm:px-4 py-3">
@@ -423,7 +523,7 @@ export default function AdminDashboard() {
                             {statusBadge(user.status)}
                           </td>
                           <td className="px-3 sm:px-4 py-3 text-[11px] sm:text-[12px] text-[#666] whitespace-nowrap">
-                            {new Date(user.createdAt).toLocaleDateString(
+                            {new Date(user.created_at || user.createdAt).toLocaleDateString(
                               "en-US",
                               {
                                 month: "short",
@@ -433,9 +533,9 @@ export default function AdminDashboard() {
                             )}
                           </td>
                           <td className="px-3 sm:px-4 py-3">
-                            {user.idImages?.length > 0 ? (
+                            {user.id_images?.length > 0 ? (
                               <span className="text-[11px] bg-[#EAF3DE] text-[#27500A] px-2.5 py-0.5 rounded-full font-medium whitespace-nowrap">
-                                {user.idImages.length} uploaded
+                                {user.id_images.length} uploaded
                               </span>
                             ) : (
                               <span className="text-[11px] text-[#bbb]">
@@ -445,7 +545,7 @@ export default function AdminDashboard() {
                           </td>
                           <td className="px-3 sm:px-4 py-3">
                             <Link
-                              to={`/admin/user/${user._id}`}
+                              to={`/user/${user._id || user.id}`}
                               className="text-[11px] text-[#185FA5] border border-[#185FA5]/25 px-3 py-1 rounded hover:bg-[#E6F1FB] transition-all inline-block whitespace-nowrap"
                             >
                               view
@@ -462,6 +562,7 @@ export default function AdminDashboard() {
         </main>
       </div>
 
+      {/* ─── Add Admin Modal ───────────────────────────────────────────────── */}
       {showAddModal && (
         <AdminModal
           onClose={() => setShowAddModal(false)}

@@ -1,328 +1,106 @@
 // src/pages/UserDetailPage.jsx
+//
+// Admin-facing "user detail" screen: profile header, an editable info
+// form, and tabs for the user's listings, bookings, sessions, events,
+// subscription payments, and uploaded documents.
+//
+// All the presentational pieces (badges, cards, image gallery, payment
+// actions, etc.) live in ../components — this file is just data
+// fetching + tab/page layout.
+
 import { useState, useEffect } from "react";
 import { useNavigate, useParams, Link } from "react-router-dom";
 import LoadingScreen from "../components/LoadingScreen";
 import { authFetch } from "../utils/auth";
 
-// Reusable components (define them in separate files or keep here)
-const AVATAR_PALETTE = [
-  { bg: "#EEEDFE", color: "#3C3489" },
-  { bg: "#E6F1FB", color: "#0C447C" },
-  { bg: "#EAF3DE", color: "#27500A" },
-  { bg: "#FAEEDA", color: "#633806" },
-  { bg: "#E1F5EE", color: "#085041" },
-  { bg: "#FBEAF0", color: "#72243E" },
-];
+import { getAvatarStyle } from "../utils/avatar";
+import { inputCls } from "../constants/styles";
 
-const getAvatarStyle = (name) =>
-  AVATAR_PALETTE[(name?.charCodeAt(0) ?? 0) % AVATAR_PALETTE.length];
+import Field from "../components/common/Field";
+import SectionTitle from "../components/common/SectionTitle";
+import InfoRow from "../components/common/InfoRow";
+import StatusBadge from "../components/common/StatusBadge";
+import RoleBadge from "../components/common/RoleBadge";
 
-const inputCls =
-  "w-full px-3 py-2 bg-[#fafaf8] border border-black/10 rounded-md text-[13px] text-[#111118] font-[inherit] outline-none focus:border-[#185FA5] focus:bg-white transition-all disabled:opacity-40 disabled:cursor-not-allowed";
-
-function Field({ label, children }) {
-  return (
-    <div>
-      <label className="block text-[10px] uppercase tracking-widest text-[#999] mb-1.5">
-        {label}
-      </label>
-      {children}
-    </div>
-  );
-}
-
-function SectionTitle({ children }) {
-  return (
-    <div className="font-serif italic font-light text-lg text-[#111118] mb-4 pb-2 border-b border-black/[0.06] flex flex-wrap items-baseline gap-1.5">
-      {children}
-    </div>
-  );
-}
-
-function InfoRow({ label, value, mono }) {
-  return (
-    <div className="flex items-start justify-between gap-3 py-2.5 border-b border-black/[0.04] last:border-0">
-      <span className="text-[10px] uppercase tracking-widest text-[#999] flex-shrink-0 w-24 sm:w-32 leading-5">
-        {label}
-      </span>
-      <span
-        className={`text-[12px] sm:text-[13px] text-[#111118] text-right break-all leading-5 ${
-          mono ? "font-mono" : ""
-        }`}
-      >
-        {value ?? <span className="text-[#ccc]">—</span>}
-      </span>
-    </div>
-  );
-}
-
-function StatusBadge({ status }) {
-  const map = {
-    confirmed: "bg-[#EAF3DE] text-[#27500A]",
-    pending: "bg-[#FAEEDA] text-[#633806]",
-    suspended: "bg-[#FCEBEB] text-[#791F1F]",
-    active: "bg-[#EAF3DE] text-[#27500A]",
-    cancelled: "bg-[#FCEBEB] text-[#791F1F]",
-  };
-  return (
-    <span
-      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-medium ${
-        map[status] || "bg-gray-100 text-gray-700"
-      }`}
-    >
-      {status}
-    </span>
-  );
-}
-
-function RoleBadge({ role }) {
-  const map = {
-    super_admin: "bg-[#EEEDFE] text-[#3C3489]",
-    admin: "bg-[#E6F1FB] text-[#0C447C]",
-    host: "bg-[#EAF3DE] text-[#27500A]",
-    user: "bg-[#F1EFE8] text-[#444441]",
-  };
-  return (
-    <span
-      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-medium ${
-        map[role] || "bg-gray-100 text-gray-700"
-      }`}
-    >
-      {role?.replace("_", " ")}
-    </span>
-  );
-}
-
-function BookingCard({ booking, type }) {
-  return (
-    <div className="border border-black/[0.06] rounded-lg p-3 hover:bg-[#fafaf8] transition-all">
-      <div className="flex justify-between items-start mb-2 gap-2">
-        <div className="flex-1 min-w-0">
-          <p className="text-xs font-medium text-[#111118] mb-1">
-            {type === "host" ? "Guest:" : "Listing:"}
-          </p>
-          <p className="text-sm font-medium text-[#185FA5] truncate">
-            {type === "host"
-              ? booking.user?.name || booking.userId
-              : booking.listing?.title || booking.listingId}
-          </p>
-        </div>
-        <StatusBadge status={booking.status} />
-      </div>
-      <div className="grid grid-cols-2 gap-2 text-xs text-[#666] mt-2">
-        <div>
-          <span className="text-[10px] uppercase tracking-wider">Check In</span>
-          <p className="text-[#111118] mt-0.5">
-            {new Date(booking.checkIn).toLocaleDateString()}
-          </p>
-        </div>
-        <div>
-          <span className="text-[10px] uppercase tracking-wider">Check Out</span>
-          <p className="text-[#111118] mt-0.5">
-            {new Date(booking.checkOut).toLocaleDateString()}
-          </p>
-        </div>
-        <div>
-          <span className="text-[10px] uppercase tracking-wider">Guests</span>
-          <p className="text-[#111118] mt-0.5">{booking.guests}</p>
-        </div>
-        <div>
-          <span className="text-[10px] uppercase tracking-wider">Total</span>
-          <p className="text-[#111118] mt-0.5 font-medium">
-            LYD{booking.totalPrice}
-          </p>
-        </div>
-      </div>
-      <p className="text-[10px] text-[#999] mt-2">
-        Booked: {new Date(booking.createdAt).toLocaleDateString()}
-      </p>
-    </div>
-  );
-}
-
-function ListingCard({ listing }) {
-  return (
-    <div className="border border-black/[0.06] rounded-lg overflow-hidden hover:shadow-md transition-all">
-      {listing.images?.[0] && (
-        <div
-          className="h-32 bg-cover bg-center"
-          style={{ backgroundImage: `url(${listing.images[0]})` }}
-        />
-      )}
-      <div className="p-3">
-        <div className="flex justify-between items-start mb-2 gap-2">
-          <h3 className="text-sm font-medium text-[#111118] line-clamp-1 flex-1 min-w-0">
-            {listing.title}
-          </h3>
-          <StatusBadge status={listing.status || "active"} />
-        </div>
-        <p className="text-xs text-[#666] mb-2 line-clamp-2">
-          {listing.description}
-        </p>
-        <div className="flex justify-between items-center text-xs gap-2">
-          <span className="text-[#185FA5] font-medium whitespace-nowrap">
-            LYD{listing.price}/night
-          </span>
-          <span className="text-[#999] truncate">{listing.location}</span>
-        </div>
-        {listing.blockedDates?.length > 0 && (
-          <p className="text-[10px] text-[#A32D2D] mt-2">
-            {listing.blockedDates.length} blocked date(s)
-          </p>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function SessionCard({ session }) {
-  return (
-    <div className="border border-black/[0.06] rounded-lg p-3 hover:bg-[#fafaf8] transition-all">
-      <div className="flex justify-between items-start mb-2 gap-2">
-        <div className="flex-1 min-w-0">
-          <p className="text-xs font-medium text-[#111118] mb-1">Device</p>
-          <p className="text-sm font-medium text-[#185FA5] truncate">
-            {session.device || "Unknown Device"}
-          </p>
-        </div>
-        <span
-          className={`text-[11px] px-2 py-0.5 rounded-full flex-shrink-0 ${
-            session.isActive
-              ? "bg-[#EAF3DE] text-[#27500A]"
-              : "bg-[#F1EFE8] text-[#444441]"
-          }`}
-        >
-          {session.isActive ? "Active" : "Ended"}
-        </span>
-      </div>
-      <div className="grid grid-cols-2 gap-2 text-xs text-[#666] mt-2">
-        <div>
-          <span className="text-[10px] uppercase tracking-wider">Browser</span>
-          <p className="text-[#111118] mt-0.5 truncate">
-            {session.browser || "Unknown"}
-          </p>
-        </div>
-        <div>
-          <span className="text-[10px] uppercase tracking-wider">OS</span>
-          <p className="text-[#111118] mt-0.5 truncate">
-            {session.os || "Unknown"}
-          </p>
-        </div>
-        <div>
-          <span className="text-[10px] uppercase tracking-wider">IP</span>
-          <p className="text-[#111118] mt-0.5 font-mono truncate">
-            {session.ipAddress || "Unknown"}
-          </p>
-        </div>
-        <div>
-          <span className="text-[10px] uppercase tracking-wider">Login</span>
-          <p className="text-[#111118] mt-0.5">
-            {session.loggedInAt
-              ? new Date(session.loggedInAt).toLocaleString()
-              : "-"}
-          </p>
-        </div>
-        {session.loggedOutAt && (
-          <div className="col-span-2">
-            <span className="text-[10px] uppercase tracking-wider">Logout</span>
-            <p className="text-[#111118] mt-0.5">
-              {new Date(session.loggedOutAt).toLocaleString()}
-            </p>
-          </div>
-        )}
-      </div>
-      {session.userAgent && (
-        <p className="text-[10px] text-[#999] mt-2 truncate">
-          {session.userAgent}
-        </p>
-      )}
-    </div>
-  );
-}
-
-function EventsCard({ event }) {
-  return (
-    <div className="border border-black/[0.06] rounded-lg p-3 hover:bg-[#fafaf8] transition-all">
-      <div className="flex justify-between items-start mb-2 gap-2">
-        <div className="flex-1 min-w-0">
-          <p className="text-xs font-medium text-[#111118] mb-1">Event Type</p>
-          <p className="text-sm font-medium text-[#185FA5] capitalize truncate">
-            {event.type}
-          </p>
-        </div>
-        <span className="text-[11px] px-2 py-0.5 rounded-full bg-[#E6F1FB] text-[#0C447C] flex-shrink-0 whitespace-nowrap">
-          {new Date(event.createdAt).toLocaleDateString()}
-        </span>
-      </div>
-      <div className="text-xs text-[#666] space-y-2 mt-2">
-        {event.metadata?.device?.type && (
-          <div className="flex justify-between gap-2">
-            <span className="text-[10px] uppercase tracking-wider flex-shrink-0">
-              Device
-            </span>
-            <span className="text-[#111118] truncate">
-              {event.metadata.device.type}
-            </span>
-          </div>
-        )}
-        {event.metadata?.browser?.name && (
-          <div className="flex justify-between gap-2">
-            <span className="text-[10px] uppercase tracking-wider flex-shrink-0">
-              Browser
-            </span>
-            <span className="text-[#111118] truncate">
-              {event.metadata.browser.name}
-            </span>
-          </div>
-        )}
-        {event.metadata?.os?.name && (
-          <div className="flex justify-between gap-2">
-            <span className="text-[10px] uppercase tracking-wider flex-shrink-0">
-              OS
-            </span>
-            <span className="text-[#111118] truncate">
-              {event.metadata.os.name}
-            </span>
-          </div>
-        )}
-        {event.metadata?.ip && (
-          <div className="flex justify-between gap-2">
-            <span className="text-[10px] uppercase tracking-wider flex-shrink-0">
-              IP
-            </span>
-            <span className="text-[#111118] font-mono truncate">
-              {event.metadata.ip}
-            </span>
-          </div>
-        )}
-        {!event.metadata && (
-          <p className="text-[#bbb] text-xs">No metadata available</p>
-        )}
-      </div>
-    </div>
-  );
-}
+import BookingCard from "../components/BookingCard";
+import ListingCard from "../components/ListingCard";
+import SessionCard from "../components/SessionCard";
+import EventsCard from "../components/EventsCard";
+import ImageGallery from "../components/ImageGallery";
+import SubscriptionPaymentCard from "../components/SubscriptionPaymentCard";
+import IDDocumentActions from "../components/IdDocumentactions";
 
 export default function UserDetailPage() {
   const navigate = useNavigate();
   const { id: userId } = useParams();
 
-  const [currentUser, setCurrentUser] = useState(null);
-  const [targetUser, setTargetUser] = useState(null);
+  // ── Core data ──
+  const [currentUser, setCurrentUser] = useState(null); // the logged-in admin/super_admin
+  const [targetUser, setTargetUser] = useState(null); // the user being viewed/edited
   const [userListings, setUserListings] = useState([]);
-  const [userBookings, setUserBookings] = useState([]);
-  const [listingsBookings, setListingsBookings] = useState([]);
+  const [userBookings, setUserBookings] = useState([]); // bookings the target user made as a guest
+  const [listingsBookings, setListingsBookings] = useState([]); // bookings made on the target user's listings (if host)
+  const [userSession, setUserSession] = useState([]);
+  const [userEvents, setUserEvents] = useState([]);
+  const [subscriptionPayments, setSubscriptionPayments] = useState([]);
+
+  // ── Edit form state ──
   const [form, setForm] = useState({});
+
+  // ── UI state ──
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [notification, setNotification] = useState(null);
-  const [lightboxImg, setLightboxImg] = useState(null);
   const [activeTab, setActiveTab] = useState("info");
-  const [userSession, setUserSession] = useState([]);
-  const [userEvents, setUserEvents] = useState([]);
 
   const isSuperAdmin = currentUser?.role === "super_admin";
+  const isAdmin =
+    currentUser?.role === "admin" || currentUser?.role === "super_admin";
+
+  // Merges ID images with every payment's receipt images into a single
+  // flat list for the "Documents" tab / count badge.
+
+  const getAllDocuments = () => {
+    const docs = [];
+
+    // Add ALL ID document images
+    if (Array.isArray(targetUser?.id_documents)) {
+      targetUser.id_documents.forEach((document) => {
+        if (document?.file_url) {
+          docs.push({
+            url: document.file_url,
+            type: "id",
+            label: `${document.document_type || "ID Document"}${
+              document.side ? ` (${document.side})` : ""
+            }`,
+          });
+        }
+      });
+    }
+
+    // Add receipt images from payments
+    if (subscriptionPayments?.length) {
+      subscriptionPayments.forEach((payment) => {
+        if (Array.isArray(payment.receipt_images)) {
+          payment.receipt_images.forEach((url) => {
+            if (url) {
+              docs.push({
+                url,
+                type: "receipt",
+                label: `Receipt (Payment #${payment.id?.slice(-8) || "N/A"})`,
+              });
+            }
+          });
+        }
+      });
+    }
+
+    return docs;
+  };
+
+  const documents = getAllDocuments();
+
   const tabs = [
     { key: "info", label: "Account Info" },
     { key: "listings", label: `Listings (${userListings.length})` },
@@ -332,50 +110,83 @@ export default function UserDetailPage() {
     },
     { key: "session", label: `Session (${userSession.length})` },
     { key: "events", label: `Events (${userEvents.length})` },
+    { key: "payments", label: `Payments (${subscriptionPayments.length})` },
+    { key: "documents", label: `Documents (${documents.length})` },
   ];
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // Data Fetching
+  // ─────────────────────────────────────────────────────────────────────────
+
+  // Load the logged-in admin first; the target user fetch depends on it
+  // (and on the :id route param).
   useEffect(() => {
     fetchCurrentUser();
   }, []);
+
   useEffect(() => {
     if (currentUser) fetchTargetUser();
   }, [currentUser, userId]);
 
+  // Confirms the caller is authenticated and has an admin-level role;
+  // redirects to /login or / otherwise.
   const fetchCurrentUser = async () => {
     try {
-      const res = await authFetch("/api/auth/me");
-      if (!res) return;
+      const res = await authFetch("/api/v1/auth/me");
+      if (!res || !res.ok) {
+        navigate("/login");
+        return;
+      }
       const data = await res.json();
-      if (!res.ok || !["admin", "super_admin"].includes(data.user.role)) {
+      const user = data.data?.user || data.user;
+      if (!user || !["admin", "super_admin"].includes(user.role)) {
         navigate("/");
         return;
       }
-      setCurrentUser(data.user);
-    } catch {
+      setCurrentUser(user);
+    } catch (error) {
+      console.error("Auth error:", error);
       navigate("/login");
     }
   };
 
+  // Fetches the user being viewed, seeds the edit form from it, pulls
+  // subscription payments off the response, then kicks off the
+  // remaining tab data fetches in parallel.
   const fetchTargetUser = async () => {
     setLoading(true);
     try {
-      const res = await authFetch(`/api/admin/users/${userId}`);
-      if (!res) return;
+      // FIXED: Use the correct admin route
+      const res = await authFetch(`/api/v1/dashboard/users/${userId}`);
+
+      if (!res) {
+        throw new Error("No response from server");
+      }
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message);
-      setTargetUser(data.user);
+      console.log("user info", data);
+      if (!res.ok) throw new Error(data.message || "Failed to load user");
+      const user = data.data?.user || data.user || data;
+      setTargetUser(user);
+
+      // Extract subscription payments from the user data
+      const payments = user.host_subscription_payments || [];
+      setSubscriptionPayments(payments);
+
       setForm({
-        name: data.user.name,
-        email: data.user.email,
-        phoneNumber: data.user.phoneNumber,
-        role: data.user.role,
-        status: data.user.status,
-        statusReason: data.user.statusReason || "",
+        name: user.name || "",
+        email: user.email || "",
+        phone_number: user.phone_number || "",
+        role: user.role || "",
+        status: user.status || "",
+        statusReason: user.statusReason || user.status_reason || "",
       });
-      await fetchUserListings();
-      await fetchUserBookings();
-      await fetchUserSession();
-      await fetchUserEvents();
+
+      await Promise.all([
+        fetchUserListings(),
+        fetchUserBookings(),
+        fetchUserSession(),
+        fetchUserEvents(),
+      ]);
     } catch (err) {
       showNotification(err.message || "Failed to load user", "error");
     } finally {
@@ -385,7 +196,8 @@ export default function UserDetailPage() {
 
   const fetchUserListings = async () => {
     try {
-      const res = await authFetch(`/api/admin/users/${userId}/listings`);
+      // FIXED: Use the correct admin route
+      const res = await authFetch(`/api/v1/dashboard/users/${userId}/listings`);
       if (res && res.ok) {
         const data = await res.json();
         setUserListings(data.listings || []);
@@ -397,7 +209,8 @@ export default function UserDetailPage() {
 
   const fetchUserBookings = async () => {
     try {
-      const res = await authFetch(`/api/admin/users/${userId}/bookings`);
+      // FIXED: Use the correct admin route
+      const res = await authFetch(`/api/v1/dashboard/users/${userId}/bookings`);
       if (res && res.ok) {
         const data = await res.json();
         setUserBookings(data.bookingsAsGuest || []);
@@ -410,7 +223,8 @@ export default function UserDetailPage() {
 
   const fetchUserSession = async () => {
     try {
-      const res = await authFetch(`/api/admin/users/${userId}/session`);
+      // FIXED: Use the correct admin route
+      const res = await authFetch(`/api/v1/dashboard/users/${userId}/sessions`);
       if (res && res.ok) {
         const data = await res.json();
         setUserSession(data.sessions || []);
@@ -422,7 +236,8 @@ export default function UserDetailPage() {
 
   const fetchUserEvents = async () => {
     try {
-      const res = await authFetch(`/api/admin/users/${userId}/events`);
+      // FIXED: Use the correct admin route
+      const res = await authFetch(`/api/v1/dashboard/users/${userId}/events`);
       if (res && res.ok) {
         const data = await res.json();
         setUserEvents(data.events || []);
@@ -432,6 +247,12 @@ export default function UserDetailPage() {
     }
   };
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // Handlers
+  // ─────────────────────────────────────────────────────────────────────────
+
+  // Saves the edit form. Regular admins can only change phone/status/
+  // statusReason; super admins can also change name/email/role.
   const handleSave = async () => {
     setSaving(true);
     try {
@@ -439,17 +260,18 @@ export default function UserDetailPage() {
         ? {
             name: form.name,
             email: form.email,
-            phoneNumber: form.phoneNumber,
+            phone_number: form.phone_number,
             role: form.role,
             status: form.status,
             statusReason: form.statusReason,
           }
         : {
-            phoneNumber: form.phoneNumber,
+            phone_number: form.phone_number,
             status: form.status,
             statusReason: form.statusReason,
           };
-      const res = await authFetch(`/api/admin/users/${userId}`, {
+      // FIXED: Use the correct admin route
+      const res = await authFetch(`/api/v1/dashboard/users/${userId}`, {
         method: "PUT",
         body: JSON.stringify(updates),
       });
@@ -468,25 +290,28 @@ export default function UserDetailPage() {
     }
   };
 
+  // Deletes the target user (super admin only, gated in the UI below)
+  // after a confirm() prompt, then redirects back to the dashboard.
   const handleDelete = async () => {
     if (
       !confirm(
-        `Delete ${targetUser.name}? This will also delete all their listings and bookings. This cannot be undone.`
+        `Delete ${targetUser.name}? This will also delete all their listings and bookings. This cannot be undone.`,
       )
     )
       return;
     setDeleting(true);
     try {
-      const res = await authFetch(`/api/admin/users/${userId}`, {
+      // FIXED: Use the correct admin route
+      const res = await authFetch(`/api/v1/dashboard/users/${userId}`, {
         method: "DELETE",
       });
       const data = await res.json();
       if (data.success) {
         showNotification(
           `User deleted with ${data.deletedCount?.listings || 0} listings and associated bookings`,
-          "success"
+          "success",
         );
-        setTimeout(() => navigate("/admin"), 1500);
+        setTimeout(() => navigate("/dashboard"), 1500);
       } else {
         showNotification(data.message, "error");
         setDeleting(false);
@@ -497,13 +322,17 @@ export default function UserDetailPage() {
     }
   };
 
+  // Shows a toast-style notification for ~3.5s.
   const showNotification = (message, type) => {
     setNotification({ message, type });
     setTimeout(() => setNotification(null), 3500);
   };
 
+  // Small helper: returns an onChange handler that writes into `form[k]`.
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
+  // Formats an ISO date string as "3 Jan 2024"; returns null (not a
+  // string) for falsy input so InfoRow can show its own placeholder.
   const fmt = (dateStr) =>
     dateStr
       ? new Date(dateStr).toLocaleDateString("en-US", {
@@ -513,6 +342,10 @@ export default function UserDetailPage() {
         })
       : null;
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // Render
+  // ─────────────────────────────────────────────────────────────────────────
+
   if (!currentUser || loading) {
     return <LoadingScreen />;
   }
@@ -521,7 +354,7 @@ export default function UserDetailPage() {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-[#f7f6f2]">
         <p className="text-[#999] text-sm">User not found.</p>
-        <Link to="/admin" className="text-xs text-[#185FA5] underline">
+        <Link to="/dashboard" className="text-xs text-[#185FA5] underline">
           ← back to admin
         </Link>
       </div>
@@ -544,27 +377,6 @@ export default function UserDetailPage() {
 
   return (
     <div className="min-h-screen bg-[#f7f6f2]">
-      {/* Lightbox */}
-      {lightboxImg && (
-        <div
-          className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4"
-          onClick={() => setLightboxImg(null)}
-        >
-          <img
-            src={toDisplayUrl(lightboxImg)}
-            alt="ID document"
-            className="max-w-full max-h-[90vh] rounded-lg object-contain"
-            onClick={(e) => e.stopPropagation()}
-          />
-          <button
-            onClick={() => setLightboxImg(null)}
-            className="absolute top-4 right-4 text-white/60 hover:text-white text-3xl leading-none"
-          >
-            ×
-          </button>
-        </div>
-      )}
-
       {/* Notification */}
       {notification && (
         <div
@@ -596,7 +408,7 @@ export default function UserDetailPage() {
             مر<span style={{ fontWeight: 700, color: "#e8c547" }}>حبا</span>
           </Link>
           <Link
-            to="/admin"
+            to="/dashboard"
             className="text-white/50 hover:text-white/80 text-xs transition-colors truncate"
           >
             ← back to users
@@ -636,12 +448,13 @@ export default function UserDetailPage() {
                 <RoleBadge role={targetUser.role} />
                 <StatusBadge status={targetUser.status} />
                 <span className="text-[11px] text-[#bbb]">
-                  #{targetUser._id?.slice(-8)}
+                  #{targetUser.id?.slice(-8)}
                 </span>
               </div>
             </div>
           </div>
 
+          {/* Only super admins can delete, and never another super admin */}
           {isSuperAdmin && targetUser.role !== "super_admin" && (
             <button
               onClick={handleDelete}
@@ -679,15 +492,15 @@ export default function UserDetailPage() {
             <div className="flex flex-col gap-5">
               <div className="bg-white rounded-xl border border-black/[0.06] p-4 sm:p-5">
                 <SectionTitle>account info</SectionTitle>
-                <InfoRow label="User ID" value={targetUser._id} mono />
-                <InfoRow label="Created" value={fmt(targetUser.createdAt)} />
+                <InfoRow label="User ID" value={targetUser.id} mono />
+                <InfoRow label="Created" value={fmt(targetUser.created_at)} />
                 <InfoRow
                   label="Last active"
-                  value={fmt(targetUser.lastActive)}
+                  value={fmt(targetUser.last_active)}
                 />
                 <InfoRow
                   label="Email verified"
-                  value={targetUser.emailVerified ? "Yes" : "No"}
+                  value={targetUser.email_verified ? "Yes" : "No"}
                 />
               </div>
 
@@ -696,27 +509,24 @@ export default function UserDetailPage() {
                   <SectionTitle>host details</SectionTitle>
                   <InfoRow
                     label="Rating"
-                    value={targetUser.hostDetails?.rating?.toFixed(1) ?? "0.0"}
+                    value={targetUser.host_details?.rating?.toFixed(1) ?? "0.0"}
                   />
                   <InfoRow
                     label="Listings"
-                    value={targetUser.hostDetails?.totalListings ?? 0}
+                    value={targetUser.totalListings ?? 0}
                   />
                   <InfoRow
                     label="Verified"
-                    value={targetUser.hostDetails?.verified ? "Yes" : "No"}
+                    value={targetUser.host_details?.verified ? "Yes" : "No"}
                   />
-                  <InfoRow
-                    label="Joined"
-                    value={fmt(targetUser.hostDetails?.joinedDate)}
-                  />
+                  <InfoRow label="Joined" value={fmt(targetUser.created_at)} />
                   <InfoRow
                     label="Confirmed"
-                    value={fmt(targetUser.hostDetails?.confirmedAt)}
+                    value={fmt(targetUser.host_details?.confirmed_at)}
                   />
                   <InfoRow
                     label="Expires"
-                    value={fmt(targetUser.hostExpiryDate)}
+                    value={fmt(targetUser.host_details?.expires_at)}
                   />
                   <InfoRow
                     label="Status reason"
@@ -729,7 +539,7 @@ export default function UserDetailPage() {
                 <SectionTitle>user details</SectionTitle>
                 <InfoRow
                   label="Member since"
-                  value={fmt(targetUser.userDetails?.memberSince)}
+                  value={fmt(targetUser.created_at)}
                 />
                 <InfoRow label="Bookings made" value={userBookings.length} />
                 <InfoRow label="Listings" value={userListings.length} />
@@ -763,8 +573,8 @@ export default function UserDetailPage() {
                     <input
                       type="tel"
                       className={inputCls}
-                      value={form.phoneNumber ?? ""}
-                      onChange={set("phoneNumber")}
+                      value={form.phone_number ?? ""}
+                      onChange={set("phone_number")}
                     />
                   </Field>
                   <Field label="status">
@@ -842,60 +652,104 @@ export default function UserDetailPage() {
               </div>
 
               {/* ID Images */}
+
+              {/* ID Documents */}
+              {/* ID Documents - Per Document Actions */}
               <div className="bg-white rounded-xl border border-black/[0.06] p-4 sm:p-6">
                 <SectionTitle>
                   id documents
                   <span className="text-sm not-italic font-normal text-[#999]">
-                    ({targetUser.idImages?.length ?? 0})
+                    ({targetUser.id_documents?.length ?? 0})
                   </span>
                 </SectionTitle>
 
-                {!targetUser.idImages?.length ? (
-                  <div className="flex items-center justify-center py-10 text-[#bbb] text-sm">
-                    No ID documents uploaded yet.
+                {targetUser.id_documents?.length > 0 ? (
+                  <div className="space-y-4">
+                    {targetUser.id_documents.map((document) => (
+                      <div
+                        key={document.id}
+                        className="border border-black/[0.06] rounded-lg p-4"
+                      >
+                        {/* Document Header with Actions */}
+                        <div className="flex items-center justify-between mb-3">
+                          <div>
+                            <p className="text-sm font-medium text-[#111118]">
+                              {document.document_type || "ID Document"}
+                              {document.side && (
+                                <span className="text-xs text-[#999] font-normal ml-2">
+                                  ({document.side})
+                                </span>
+                              )}
+                            </p>
+                            <p className="text-[11px] text-[#999]">
+                              Uploaded:{" "}
+                              {new Date(
+                                document.created_at,
+                              ).toLocaleDateString()}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <StatusBadge
+                              status={document.status || "pending"}
+                            />
+                            {/* ✅ Per-document actions */}
+                            <IDDocumentActions
+                              documentId={document.id}
+                              status={document.status || "pending"}
+                              documentType={
+                                document.document_type || "ID Document"
+                              }
+                              side={document.side}
+                              isAdmin={isAdmin}
+                              onAction={() => {
+                                setLoading(true);
+                                fetchTargetUser().finally(() =>
+                                  setLoading(false),
+                                );
+                              }}
+                            />
+                          </div>
+                        </div>
+
+                        {/* Document Image */}
+                        {document.file_url && (
+                          <div className="mt-3">
+                            <ImageGallery
+                              images={[document.file_url]}
+                              title={`${document.document_type || "ID Document"} ${document.side || ""}`}
+                              emptyMessage="No image available."
+                            />
+                          </div>
+                        )}
+
+                        {/* Rejection Reason */}
+                        {document.status === "rejected" &&
+                          document.rejection_reason && (
+                            <div className="mt-3 p-3 bg-[#FCEBEB] rounded-lg border border-red-200">
+                              <p className="text-[11px] font-medium text-[#791F1F]">
+                                Rejection Reason:
+                              </p>
+                              <p className="text-[13px] text-[#791F1F]">
+                                {document.rejection_reason}
+                              </p>
+                            </div>
+                          )}
+
+                        {/* Review Info */}
+                        {document.reviewed_at && (
+                          <p className="text-[10px] text-[#999] mt-2">
+                            Reviewed:{" "}
+                            {new Date(document.reviewed_at).toLocaleString()}
+                            {document.reviewer?.name &&
+                              ` by ${document.reviewer.name}`}
+                          </p>
+                        )}
+                      </div>
+                    ))}
                   </div>
                 ) : (
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                    {targetUser.idImages.map((url, i) => {
-                      const isPdf =
-                        url.toLowerCase().includes(".pdf") ||
-                        url.includes("/raw/");
-                      return isPdf ? (
-                        <a
-                          key={i}
-                          href={url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex flex-col items-center justify-center gap-2 border border-black/10 rounded-lg p-4 sm:p-6 text-center hover:bg-[#fafaf8] transition-all"
-                        >
-                          <span className="text-3xl">📄</span>
-                          <span className="text-[11px] text-[#185FA5]">
-                            PDF — open
-                          </span>
-                        </a>
-                      ) : (
-                        <div
-                          key={i}
-                          className="relative group rounded-lg overflow-hidden border border-black/10"
-                        >
-                          <img
-                            src={toDisplayUrl(url)}
-                            alt={`ID doc ${i + 1}`}
-                            className="w-full h-28 sm:h-32 object-cover cursor-zoom-in transition-transform duration-200 group-hover:scale-[1.02]"
-                            onClick={() => setLightboxImg(url)}
-                          />
-                          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-all pointer-events-none rounded-lg" />
-                          <a
-                            href={url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="absolute bottom-2 right-2 opacity-0 group-hover:opacity-100 text-[10px] bg-white/90 px-2 py-1 rounded text-[#185FA5] transition-all"
-                          >
-                            open ↗
-                          </a>
-                        </div>
-                      );
-                    })}
+                  <div className="flex items-center justify-center py-8 text-[#bbb] text-sm">
+                    No ID documents uploaded yet.
                   </div>
                 )}
               </div>
@@ -919,7 +773,7 @@ export default function UserDetailPage() {
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {userListings.map((listing) => (
-                  <ListingCard key={listing._id} listing={listing} />
+                  <ListingCard key={listing.id} listing={listing} />
                 ))}
               </div>
             )}
@@ -944,7 +798,7 @@ export default function UserDetailPage() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {userBookings.map((booking) => (
                     <BookingCard
-                      key={booking._id}
+                      key={booking.id}
                       booking={booking}
                       type="guest"
                     />
@@ -968,7 +822,7 @@ export default function UserDetailPage() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {listingsBookings.map((booking) => (
                     <BookingCard
-                      key={booking._id}
+                      key={booking.id}
                       booking={booking}
                       type="host"
                     />
@@ -995,7 +849,7 @@ export default function UserDetailPage() {
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {userSession.map((session) => (
-                  <SessionCard key={session._id} session={session} />
+                  <SessionCard key={session.id} session={session} />
                 ))}
               </div>
             )}
@@ -1018,8 +872,141 @@ export default function UserDetailPage() {
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {userEvents.map((event) => (
-                  <EventsCard key={event._id} event={event} />
+                  <EventsCard key={event.id} event={event} />
                 ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Payments Tab ── */}
+        {activeTab === "payments" && (
+          <div className="bg-white rounded-xl border border-black/[0.06] p-4 sm:p-6">
+            <div className="flex justify-between items-center mb-4">
+              <SectionTitle>
+                host subscription payments
+                <span className="text-sm not-italic font-normal text-[#999]">
+                  ({subscriptionPayments.length})
+                </span>
+              </SectionTitle>
+              <button
+                onClick={() => {
+                  setLoading(true);
+                  fetchTargetUser().finally(() => setLoading(false));
+                }}
+                className="text-[11px] text-[#185FA5] hover:underline"
+              >
+                ↻ Refresh
+              </button>
+            </div>
+
+            {targetUser.role !== "host" ? (
+              <div className="flex items-center justify-center py-12 text-[#bbb] text-sm">
+                This user is not a host, so they don't have subscription
+                payments.
+              </div>
+            ) : subscriptionPayments.length === 0 ? (
+              <div className="flex items-center justify-center py-12 text-[#bbb] text-sm">
+                This host has no subscription payments yet.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {subscriptionPayments.map((payment, index) => (
+                  <SubscriptionPaymentCard
+                    key={payment.id || index}
+                    payment={payment}
+                    onRefresh={() => {
+                      setLoading(true);
+                      fetchTargetUser().finally(() => setLoading(false));
+                    }}
+                    isAdmin={isAdmin}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Documents Tab ── */}
+        {activeTab === "documents" && (
+          <div className="bg-white rounded-xl border border-black/[0.06] p-4 sm:p-6">
+            <SectionTitle>
+              all documents
+              <span className="text-sm not-italic font-normal text-[#999]">
+                ({documents.length})
+              </span>
+            </SectionTitle>
+
+            {documents.length === 0 ? (
+              <div className="flex items-center justify-center py-12 text-[#bbb] text-sm">
+                No documents found for this user.
+              </div>
+            ) : (
+              <div className="space-y-6">
+                {/* ID Documents */}
+                {targetUser?.id_images?.length > 0 && (
+                  <div>
+                    <h3 className="text-xs uppercase tracking-widest text-[#999] mb-3 flex items-center gap-2">
+                      ID Documents ({targetUser.id_images.length})
+                      <StatusBadge
+                        status={targetUser.status_id_images || "pending"}
+                      />
+                    </h3>
+                    <ImageGallery
+                      images={targetUser.id_images}
+                      title="ID Document"
+                      emptyMessage="No ID documents"
+                    />
+                  </div>
+                )}
+
+                {/* Receipt documents from payments */}
+                {subscriptionPayments.some(
+                  (p) => p.receipt_images?.length > 0,
+                ) && (
+                  <div className="pt-4 border-t border-black/[0.06]">
+                    <h3 className="text-xs uppercase tracking-widest text-[#999] mb-3">
+                      Payment Receipts
+                    </h3>
+                    {subscriptionPayments.map(
+                      (payment, index) =>
+                        payment.receipt_images?.length > 0 && (
+                          <div
+                            key={payment.id || index}
+                            className="mb-4 last:mb-0"
+                          >
+                            <p className="text-[11px] font-medium text-[#111118] mb-2">
+                              Payment #{payment.id?.slice(-8) || "N/A"} — LYD
+                              {payment.amount}
+                              <span className="text-[#999] font-normal ml-2">
+                                (
+                                {new Date(
+                                  payment.created_at,
+                                ).toLocaleDateString()}
+                                )
+                              </span>
+                              <span
+                                className={`ml-2 text-[10px] px-2 py-0.5 rounded-full ${
+                                  payment.status === "approved"
+                                    ? "bg-[#EAF3DE] text-[#27500A]"
+                                    : payment.status === "rejected"
+                                      ? "bg-[#FCEBEB] text-[#791F1F]"
+                                      : "bg-[#E6F1FB] text-[#0C447C]"
+                                }`}
+                              >
+                                {payment.status}
+                              </span>
+                            </p>
+                            <ImageGallery
+                              images={payment.receipt_images}
+                              title="Receipt"
+                              emptyMessage="No receipt images"
+                            />
+                          </div>
+                        ),
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </div>
