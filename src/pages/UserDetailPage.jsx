@@ -2,7 +2,7 @@
 //
 // Admin-facing "user detail" screen: profile header, an editable info
 // form, and tabs for the user's listings, bookings, sessions, events,
-// subscription payments, and uploaded documents.
+// subscription payments, and ID documents.
 //
 // All the presentational pieces (badges, cards, image gallery, payment
 // actions, etc.) live in ../components — this file is just data
@@ -58,48 +58,8 @@ export default function UserDetailPage() {
   const isAdmin =
     currentUser?.role === "admin" || currentUser?.role === "super_admin";
 
-  // Merges ID images with every payment's receipt images into a single
-  // flat list for the "Documents" tab / count badge.
-
-  const getAllDocuments = () => {
-    const docs = [];
-
-    // Add ALL ID document images
-    if (Array.isArray(targetUser?.id_documents)) {
-      targetUser.id_documents.forEach((document) => {
-        if (document?.file_url) {
-          docs.push({
-            url: document.file_url,
-            type: "id",
-            label: `${document.document_type || "ID Document"}${
-              document.side ? ` (${document.side})` : ""
-            }`,
-          });
-        }
-      });
-    }
-
-    // Add receipt images from payments
-    if (subscriptionPayments?.length) {
-      subscriptionPayments.forEach((payment) => {
-        if (Array.isArray(payment.receipt_images)) {
-          payment.receipt_images.forEach((url) => {
-            if (url) {
-              docs.push({
-                url,
-                type: "receipt",
-                label: `Receipt (Payment #${payment.id?.slice(-8) || "N/A"})`,
-              });
-            }
-          });
-        }
-      });
-    }
-
-    return docs;
-  };
-
-  const documents = getAllDocuments();
+  // Total number of ID documents (used for the tab badge).
+  const idDocumentCount = targetUser?.id_documents?.length ?? 0;
 
   const tabs = [
     { key: "info", label: "Account Info" },
@@ -111,7 +71,7 @@ export default function UserDetailPage() {
     { key: "session", label: `Session (${userSession.length})` },
     { key: "events", label: `Events (${userEvents.length})` },
     { key: "payments", label: `Payments (${subscriptionPayments.length})` },
-    { key: "documents", label: `Documents (${documents.length})` },
+    { key: "idDocuments", label: `ID Documents (${idDocumentCount})` },
   ];
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -156,7 +116,6 @@ export default function UserDetailPage() {
   const fetchTargetUser = async () => {
     setLoading(true);
     try {
-      // FIXED: Use the correct admin route
       const res = await authFetch(`/api/v1/dashboard/users/${userId}`);
 
       if (!res) {
@@ -196,7 +155,6 @@ export default function UserDetailPage() {
 
   const fetchUserListings = async () => {
     try {
-      // FIXED: Use the correct admin route
       const res = await authFetch(`/api/v1/dashboard/users/${userId}/listings`);
       if (res && res.ok) {
         const data = await res.json();
@@ -209,7 +167,6 @@ export default function UserDetailPage() {
 
   const fetchUserBookings = async () => {
     try {
-      // FIXED: Use the correct admin route
       const res = await authFetch(`/api/v1/dashboard/users/${userId}/bookings`);
       if (res && res.ok) {
         const data = await res.json();
@@ -223,7 +180,6 @@ export default function UserDetailPage() {
 
   const fetchUserSession = async () => {
     try {
-      // FIXED: Use the correct admin route
       const res = await authFetch(`/api/v1/dashboard/users/${userId}/sessions`);
       if (res && res.ok) {
         const data = await res.json();
@@ -236,7 +192,6 @@ export default function UserDetailPage() {
 
   const fetchUserEvents = async () => {
     try {
-      // FIXED: Use the correct admin route
       const res = await authFetch(`/api/v1/dashboard/users/${userId}/events`);
       if (res && res.ok) {
         const data = await res.json();
@@ -270,7 +225,6 @@ export default function UserDetailPage() {
             status: form.status,
             statusReason: form.statusReason,
           };
-      // FIXED: Use the correct admin route
       const res = await authFetch(`/api/v1/dashboard/users/${userId}`, {
         method: "PUT",
         body: JSON.stringify(updates),
@@ -301,7 +255,6 @@ export default function UserDetailPage() {
       return;
     setDeleting(true);
     try {
-      // FIXED: Use the correct admin route
       const res = await authFetch(`/api/v1/dashboard/users/${userId}`, {
         method: "DELETE",
       });
@@ -650,109 +603,6 @@ export default function UserDetailPage() {
                   </button>
                 </div>
               </div>
-
-              {/* ID Images */}
-
-              {/* ID Documents */}
-              {/* ID Documents - Per Document Actions */}
-              <div className="bg-white rounded-xl border border-black/[0.06] p-4 sm:p-6">
-                <SectionTitle>
-                  id documents
-                  <span className="text-sm not-italic font-normal text-[#999]">
-                    ({targetUser.id_documents?.length ?? 0})
-                  </span>
-                </SectionTitle>
-
-                {targetUser.id_documents?.length > 0 ? (
-                  <div className="space-y-4">
-                    {targetUser.id_documents.map((document) => (
-                      <div
-                        key={document.id}
-                        className="border border-black/[0.06] rounded-lg p-4"
-                      >
-                        {/* Document Header with Actions */}
-                        <div className="flex items-center justify-between mb-3">
-                          <div>
-                            <p className="text-sm font-medium text-[#111118]">
-                              {document.document_type || "ID Document"}
-                              {document.side && (
-                                <span className="text-xs text-[#999] font-normal ml-2">
-                                  ({document.side})
-                                </span>
-                              )}
-                            </p>
-                            <p className="text-[11px] text-[#999]">
-                              Uploaded:{" "}
-                              {new Date(
-                                document.created_at,
-                              ).toLocaleDateString()}
-                            </p>
-                          </div>
-                          <div className="flex items-center gap-3">
-                            <StatusBadge
-                              status={document.status || "pending"}
-                            />
-                            {/* ✅ Per-document actions */}
-                            <IDDocumentActions
-                              documentId={document.id}
-                              status={document.status || "pending"}
-                              documentType={
-                                document.document_type || "ID Document"
-                              }
-                              side={document.side}
-                              isAdmin={isAdmin}
-                              onAction={() => {
-                                setLoading(true);
-                                fetchTargetUser().finally(() =>
-                                  setLoading(false),
-                                );
-                              }}
-                            />
-                          </div>
-                        </div>
-
-                        {/* Document Image */}
-                        {document.file_url && (
-                          <div className="mt-3">
-                            <ImageGallery
-                              images={[document.file_url]}
-                              title={`${document.document_type || "ID Document"} ${document.side || ""}`}
-                              emptyMessage="No image available."
-                            />
-                          </div>
-                        )}
-
-                        {/* Rejection Reason */}
-                        {document.status === "rejected" &&
-                          document.rejection_reason && (
-                            <div className="mt-3 p-3 bg-[#FCEBEB] rounded-lg border border-red-200">
-                              <p className="text-[11px] font-medium text-[#791F1F]">
-                                Rejection Reason:
-                              </p>
-                              <p className="text-[13px] text-[#791F1F]">
-                                {document.rejection_reason}
-                              </p>
-                            </div>
-                          )}
-
-                        {/* Review Info */}
-                        {document.reviewed_at && (
-                          <p className="text-[10px] text-[#999] mt-2">
-                            Reviewed:{" "}
-                            {new Date(document.reviewed_at).toLocaleString()}
-                            {document.reviewer?.name &&
-                              ` by ${document.reviewer.name}`}
-                          </p>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="flex items-center justify-center py-8 text-[#bbb] text-sm">
-                    No ID documents uploaded yet.
-                  </div>
-                )}
-              </div>
             </div>
           </div>
         )}
@@ -927,86 +777,102 @@ export default function UserDetailPage() {
           </div>
         )}
 
-        {/* ── Documents Tab ── */}
-        {activeTab === "documents" && (
+        {/* ── ID Documents Tab ── */}
+        {activeTab === "idDocuments" && (
           <div className="bg-white rounded-xl border border-black/[0.06] p-4 sm:p-6">
             <SectionTitle>
-              all documents
+              id documents
               <span className="text-sm not-italic font-normal text-[#999]">
-                ({documents.length})
+                ({idDocumentCount})
               </span>
             </SectionTitle>
 
-            {documents.length === 0 ? (
+            {idDocumentCount === 0 ? (
               <div className="flex items-center justify-center py-12 text-[#bbb] text-sm">
-                No documents found for this user.
+                No ID documents uploaded yet.
               </div>
             ) : (
-              <div className="space-y-6">
-                {/* ID Documents */}
-                {targetUser?.id_images?.length > 0 && (
-                  <div>
-                    <h3 className="text-xs uppercase tracking-widest text-[#999] mb-3 flex items-center gap-2">
-                      ID Documents ({targetUser.id_images.length})
-                      <StatusBadge
-                        status={targetUser.status_id_images || "pending"}
-                      />
-                    </h3>
-                    <ImageGallery
-                      images={targetUser.id_images}
-                      title="ID Document"
-                      emptyMessage="No ID documents"
-                    />
-                  </div>
-                )}
+              <div className="space-y-4">
+                {targetUser.id_documents.map((document) => (
+                  <div
+                    key={document.id}
+                    className="border border-black/[0.06] rounded-lg p-4"
+                  >
+                    {/* Document header with actions */}
+                    <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                      <div>
+                        <p className="text-sm font-medium text-[#111118]">
+                          {document.document_type || "ID Document"}
+                          {document.side && (
+                            <span className="text-xs text-[#999] font-normal ml-2">
+                              ({document.side})
+                            </span>
+                          )}
+                        </p>
+                        <p className="text-[11px] text-[#999]">
+                          Uploaded:{" "}
+                          {document.created_at
+                            ? new Date(document.created_at).toLocaleDateString()
+                            : "N/A"}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <StatusBadge status={document.status || "pending"} />
+                        <IDDocumentActions
+                          documentId={document.id}
+                          status={document.status || "pending"}
+                          documentType={
+                            document.document_type || "ID Document"
+                          }
+                          side={document.side}
+                          isAdmin={isAdmin}
+                          onAction={() => {
+                            setLoading(true);
+                            fetchTargetUser().finally(() =>
+                              setLoading(false),
+                            );
+                          }}
+                        />
+                      </div>
+                    </div>
 
-                {/* Receipt documents from payments */}
-                {subscriptionPayments.some(
-                  (p) => p.receipt_images?.length > 0,
-                ) && (
-                  <div className="pt-4 border-t border-black/[0.06]">
-                    <h3 className="text-xs uppercase tracking-widest text-[#999] mb-3">
-                      Payment Receipts
-                    </h3>
-                    {subscriptionPayments.map(
-                      (payment, index) =>
-                        payment.receipt_images?.length > 0 && (
-                          <div
-                            key={payment.id || index}
-                            className="mb-4 last:mb-0"
-                          >
-                            <p className="text-[11px] font-medium text-[#111118] mb-2">
-                              Payment #{payment.id?.slice(-8) || "N/A"} — LYD
-                              {payment.amount}
-                              <span className="text-[#999] font-normal ml-2">
-                                (
-                                {new Date(
-                                  payment.created_at,
-                                ).toLocaleDateString()}
-                                )
-                              </span>
-                              <span
-                                className={`ml-2 text-[10px] px-2 py-0.5 rounded-full ${
-                                  payment.status === "approved"
-                                    ? "bg-[#EAF3DE] text-[#27500A]"
-                                    : payment.status === "rejected"
-                                      ? "bg-[#FCEBEB] text-[#791F1F]"
-                                      : "bg-[#E6F1FB] text-[#0C447C]"
-                                }`}
-                              >
-                                {payment.status}
-                              </span>
-                            </p>
-                            <ImageGallery
-                              images={payment.receipt_images}
-                              title="Receipt"
-                              emptyMessage="No receipt images"
-                            />
-                          </div>
-                        ),
+                    {/* Document image */}
+                    {document.file_url && (
+                      <div className="mt-3">
+                        <ImageGallery
+                          images={[document.file_url]}
+                          title={`${
+                            document.document_type || "ID Document"
+                          } ${document.side || ""}`}
+                          emptyMessage="No image available."
+                        />
+                      </div>
+                    )}
+
+                    {/* Rejection reason */}
+                    {document.status === "rejected" &&
+                      document.rejection_reason && (
+                        <div className="mt-3 p-3 bg-[#FCEBEB] rounded-lg border border-red-200">
+                          <p className="text-[11px] font-medium text-[#791F1F]">
+                            Rejection Reason:
+                          </p>
+                          <p className="text-[13px] text-[#791F1F]">
+                            {document.rejection_reason}
+                          </p>
+                        </div>
+                      )}
+
+                    {/* Review info */}
+                    {document.reviewed_at && (
+                      <p className="text-[10px] text-[#999] mt-2">
+                        Reviewed:{" "}
+                        {new Date(document.reviewed_at).toLocaleString()}
+                        {document.reviewer?.name &&
+                          ` by ${document.reviewer.name}`}
+                      </p>
                     )}
                   </div>
-                )}
+                ))}
               </div>
             )}
           </div>
