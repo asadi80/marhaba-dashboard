@@ -4,9 +4,8 @@
 // form, and tabs for the user's listings, bookings, sessions, events,
 // subscription payments, and ID documents.
 //
-// All the presentational pieces (badges, cards, image gallery, payment
-// actions, etc.) live in ../components — this file is just data
-// fetching + tab/page layout.
+// Documents are fetched as blobs and their MIME type is read from the
+// response — so files render inline even when the URL has no extension.
 
 import { useState, useEffect } from "react";
 import { useNavigate, useParams, Link } from "react-router-dom";
@@ -30,16 +29,266 @@ import ImageGallery from "../components/ImageGallery";
 import SubscriptionPaymentCard from "../components/SubscriptionPaymentCard";
 import IDDocumentActions from "../components/IdDocumentactions";
 
+// ─────────────────────────────────────────────────────────────────────────
+// DocumentPreview
+//
+// Fetches the file as a blob, reads its MIME type from the response, and
+// renders it inline. Images are converted to a data URL so they always
+// display — even when the URL has no file extension.
+// ─────────────────────────────────────────────────────────────────────────
+function DocumentPreview({ url, title }) {
+  const [blobUrl, setBlobUrl] = useState(null);
+  const [mime, setMime] = useState("");
+  const [textContent, setTextContent] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    if (!url) {
+      setLoading(false);
+      setError("No file URL provided.");
+      return;
+    }
+
+    let cancelled = false;
+    let objectUrl = null;
+
+    (async () => {
+      setLoading(true);
+      setError(null);
+      setBlobUrl(null);
+      setTextContent(null);
+
+      try {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+        // Read MIME type — from Content-Type header, falling back to
+        // the blob's own type.
+        let contentType =
+          res.headers.get("content-type")?.split(";")[0].trim() || "";
+
+        const blob = await res.blob();
+        if (!contentType) contentType = blob.type || "application/octet-stream";
+
+        if (cancelled) return;
+
+        // For text-like files, read the content directly.
+        if (
+          contentType.startsWith("text/") ||
+          contentType === "application/json" ||
+          contentType === "application/xml"
+        ) {
+          const text = await blob.text();
+          if (!cancelled) {
+            setMime(contentType);
+            setTextContent(text);
+          }
+        } else {
+          // Everything else: create an object URL the browser can render.
+          objectUrl = URL.createObjectURL(blob);
+          if (!cancelled) {
+            setMime(contentType);
+            setBlobUrl(objectUrl);
+          }
+        }
+      } catch (err) {
+        if (!cancelled) setError(err.message || "Failed to load file");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [url]);
+
+  // ── Loading ──
+  if (loading) {
+    return (
+      <div className="border border-black/[0.06] rounded-lg p-4 bg-[#f7f6f2] text-[11px] text-[#999]">
+        Loading preview…
+      </div>
+    );
+  }
+
+  // ── Error ──
+  if (error) {
+    return (
+      <div className="border border-black/[0.06] rounded-lg p-4 bg-[#FCEBEB] text-[11px] text-[#791F1F]">
+        Could not load file: {error}.{" "}
+        <a
+          href={url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="underline"
+        >
+          Open directly ↗
+        </a>
+      </div>
+    );
+  }
+
+  // ── Image (any image/* mime) — rendered as a data/object URL ──
+  if (mime.startsWith("image/")) {
+    return (
+      <ImageGallery
+        images={[blobUrl]}
+        title={title || "Image"}
+        emptyMessage="No image available."
+      />
+    );
+  }
+
+  // ── PDF ──
+  if (mime === "application/pdf") {
+    return (
+      <div className="border border-black/[0.06] rounded-lg overflow-hidden">
+        <div className="flex items-center justify-between px-3 py-2 bg-[#f7f6f2] border-b border-black/[0.06]">
+          <span className="text-[11px] font-medium text-[#111118]">
+            📄 PDF Document
+          </span>
+          <a
+            href={blobUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[11px] text-[#185FA5] hover:underline"
+          >
+            Open in new tab ↗
+          </a>
+        </div>
+        <iframe
+          src={blobUrl}
+          title={title || "PDF"}
+          className="w-full h-[480px] bg-white"
+        />
+      </div>
+    );
+  }
+
+  // ── Text-like ──
+  if (textContent !== null) {
+    return (
+      <div className="border border-black/[0.06] rounded-lg overflow-hidden">
+        <div className="flex items-center justify-between px-3 py-2 bg-[#f7f6f2] border-b border-black/[0.06]">
+          <span className="text-[11px] font-medium text-[#111118]">
+            📝 Text Document ({mime})
+          </span>
+          <a
+            href={blobUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[11px] text-[#185FA5] hover:underline"
+          >
+            Open raw ↗
+          </a>
+        </div>
+        <pre className="p-3 max-h-[480px] overflow-auto text-[11px] text-[#111118] bg-white whitespace-pre-wrap break-words">
+          {textContent}
+        </pre>
+      </div>
+    );
+  }
+
+  // ── Video ──
+  if (mime.startsWith("video/")) {
+    return (
+      <div className="border border-black/[0.06] rounded-lg overflow-hidden bg-black">
+        <video
+          src={blobUrl}
+          controls
+          preload="metadata"
+          className="w-full max-h-[480px]"
+        />
+      </div>
+    );
+  }
+
+  // ── Audio ──
+  if (mime.startsWith("audio/")) {
+    return (
+      <div className="border border-black/[0.06] rounded-lg p-4 bg-[#f7f6f2]">
+        <p className="text-[11px] font-medium text-[#111118] mb-2">
+          🎵 Audio File ({mime})
+        </p>
+        <audio src={blobUrl} controls className="w-full" />
+      </div>
+    );
+  }
+
+  // ── Office (Microsoft viewer needs a public URL, so fall back to raw) ──
+  const officeMimes = [
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.ms-excel",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/vnd.ms-powerpoint",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  ];
+  if (officeMimes.includes(mime)) {
+    return (
+      <div className="border border-black/[0.06] rounded-lg p-4 bg-[#f7f6f2] flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <span className="text-2xl flex-shrink-0">📎</span>
+          <div className="min-w-0">
+            <p className="text-[12px] font-medium text-[#111118] truncate">
+              Office Document ({mime})
+            </p>
+            <p className="text-[10px] text-[#999] truncate">
+              Inline Office preview requires a public file URL.
+            </p>
+          </div>
+        </div>
+        <a
+          href={url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-[11px] text-[#185FA5] hover:underline flex-shrink-0"
+        >
+          Open ↗
+        </a>
+      </div>
+    );
+  }
+
+  // ── Fallback ──
+  return (
+    <div className="border border-black/[0.06] rounded-lg p-4 bg-[#f7f6f2] flex items-center justify-between gap-3">
+      <div className="flex items-center gap-3 min-w-0">
+        <span className="text-2xl flex-shrink-0">📎</span>
+        <div className="min-w-0">
+          <p className="text-[12px] font-medium text-[#111118] truncate">
+            {mime || "Unknown file type"}
+          </p>
+          <p className="text-[10px] text-[#999] truncate">
+            Preview not available for this file type.
+          </p>
+        </div>
+      </div>
+      <a
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-[11px] text-[#185FA5] hover:underline flex-shrink-0"
+      >
+        Open ↗
+      </a>
+    </div>
+  );
+}
+
 export default function UserDetailPage() {
   const navigate = useNavigate();
   const { id: userId } = useParams();
 
   // ── Core data ──
-  const [currentUser, setCurrentUser] = useState(null); // the logged-in admin/super_admin
-  const [targetUser, setTargetUser] = useState(null); // the user being viewed/edited
+  const [currentUser, setCurrentUser] = useState(null);
+  const [targetUser, setTargetUser] = useState(null);
   const [userListings, setUserListings] = useState([]);
-  const [userBookings, setUserBookings] = useState([]); // bookings the target user made as a guest
-  const [listingsBookings, setListingsBookings] = useState([]); // bookings made on the target user's listings (if host)
+  const [userBookings, setUserBookings] = useState([]);
+  const [listingsBookings, setListingsBookings] = useState([]);
   const [userSession, setUserSession] = useState([]);
   const [userEvents, setUserEvents] = useState([]);
   const [subscriptionPayments, setSubscriptionPayments] = useState([]);
@@ -58,7 +307,6 @@ export default function UserDetailPage() {
   const isAdmin =
     currentUser?.role === "admin" || currentUser?.role === "super_admin";
 
-  // Total number of ID documents (used for the tab badge).
   const idDocumentCount = targetUser?.id_documents?.length ?? 0;
 
   const tabs = [
@@ -78,8 +326,6 @@ export default function UserDetailPage() {
   // Data Fetching
   // ─────────────────────────────────────────────────────────────────────────
 
-  // Load the logged-in admin first; the target user fetch depends on it
-  // (and on the :id route param).
   useEffect(() => {
     fetchCurrentUser();
   }, []);
@@ -88,8 +334,6 @@ export default function UserDetailPage() {
     if (currentUser) fetchTargetUser();
   }, [currentUser, userId]);
 
-  // Confirms the caller is authenticated and has an admin-level role;
-  // redirects to /login or / otherwise.
   const fetchCurrentUser = async () => {
     try {
       const res = await authFetch("/api/v1/auth/me");
@@ -110,24 +354,17 @@ export default function UserDetailPage() {
     }
   };
 
-  // Fetches the user being viewed, seeds the edit form from it, pulls
-  // subscription payments off the response, then kicks off the
-  // remaining tab data fetches in parallel.
   const fetchTargetUser = async () => {
     setLoading(true);
     try {
       const res = await authFetch(`/api/v1/dashboard/users/${userId}`);
-
-      if (!res) {
-        throw new Error("No response from server");
-      }
+      if (!res) throw new Error("No response from server");
       const data = await res.json();
       console.log("user info", data);
       if (!res.ok) throw new Error(data.message || "Failed to load user");
       const user = data.data?.user || data.user || data;
       setTargetUser(user);
 
-      // Extract subscription payments from the user data
       const payments = user.host_subscription_payments || [];
       setSubscriptionPayments(payments);
 
@@ -183,6 +420,8 @@ export default function UserDetailPage() {
       const res = await authFetch(`/api/v1/dashboard/users/${userId}/sessions`);
       if (res && res.ok) {
         const data = await res.json();
+                console.log("session",data);
+
         setUserSession(data.sessions || []);
       }
     } catch (err) {
@@ -195,6 +434,8 @@ export default function UserDetailPage() {
       const res = await authFetch(`/api/v1/dashboard/users/${userId}/events`);
       if (res && res.ok) {
         const data = await res.json();
+        // console.log("event",data);
+        
         setUserEvents(data.events || []);
       }
     } catch (err) {
@@ -206,8 +447,6 @@ export default function UserDetailPage() {
   // Handlers
   // ─────────────────────────────────────────────────────────────────────────
 
-  // Saves the edit form. Regular admins can only change phone/status/
-  // statusReason; super admins can also change name/email/role.
   const handleSave = async () => {
     setSaving(true);
     try {
@@ -244,8 +483,6 @@ export default function UserDetailPage() {
     }
   };
 
-  // Deletes the target user (super admin only, gated in the UI below)
-  // after a confirm() prompt, then redirects back to the dashboard.
   const handleDelete = async () => {
     if (
       !confirm(
@@ -275,17 +512,13 @@ export default function UserDetailPage() {
     }
   };
 
-  // Shows a toast-style notification for ~3.5s.
   const showNotification = (message, type) => {
     setNotification({ message, type });
     setTimeout(() => setNotification(null), 3500);
   };
 
-  // Small helper: returns an onChange handler that writes into `form[k]`.
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
-  // Formats an ISO date string as "3 Jan 2024"; returns null (not a
-  // string) for falsy input so InfoRow can show its own placeholder.
   const fmt = (dateStr) =>
     dateStr
       ? new Date(dateStr).toLocaleDateString("en-US", {
@@ -407,7 +640,6 @@ export default function UserDetailPage() {
             </div>
           </div>
 
-          {/* Only super admins can delete, and never another super admin */}
           {isSuperAdmin && targetUser.role !== "super_admin" && (
             <button
               onClick={handleDelete}
@@ -441,7 +673,6 @@ export default function UserDetailPage() {
         {/* ── Info Tab ── */}
         {activeTab === "info" && (
           <div className="flex flex-col lg:grid lg:grid-cols-3 gap-5">
-            {/* Left column */}
             <div className="flex flex-col gap-5">
               <div className="bg-white rounded-xl border border-black/[0.06] p-4 sm:p-5">
                 <SectionTitle>account info</SectionTitle>
@@ -499,9 +730,7 @@ export default function UserDetailPage() {
               </div>
             </div>
 
-            {/* Right columns */}
             <div className="flex flex-col gap-5 lg:col-span-2">
-              {/* Edit form */}
               <div className="bg-white rounded-xl border border-black/[0.06] p-4 sm:p-6">
                 <SectionTitle>edit user</SectionTitle>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -780,12 +1009,23 @@ export default function UserDetailPage() {
         {/* ── ID Documents Tab ── */}
         {activeTab === "idDocuments" && (
           <div className="bg-white rounded-xl border border-black/[0.06] p-4 sm:p-6">
-            <SectionTitle>
-              id documents
-              <span className="text-sm not-italic font-normal text-[#999]">
-                ({idDocumentCount})
-              </span>
-            </SectionTitle>
+            <div className="flex justify-between items-center mb-4">
+              <SectionTitle>
+                id documents
+                <span className="text-sm not-italic font-normal text-[#999]">
+                  ({idDocumentCount})
+                </span>
+              </SectionTitle>
+              <button
+                onClick={() => {
+                  setLoading(true);
+                  fetchTargetUser().finally(() => setLoading(false));
+                }}
+                className="text-[11px] text-[#185FA5] hover:underline"
+              >
+                ↻ Refresh
+              </button>
+            </div>
 
             {idDocumentCount === 0 ? (
               <div className="flex items-center justify-center py-12 text-[#bbb] text-sm">
@@ -812,7 +1052,9 @@ export default function UserDetailPage() {
                         <p className="text-[11px] text-[#999]">
                           Uploaded:{" "}
                           {document.created_at
-                            ? new Date(document.created_at).toLocaleDateString()
+                            ? new Date(
+                                document.created_at,
+                              ).toLocaleDateString()
                             : "N/A"}
                         </p>
                       </div>
@@ -836,15 +1078,14 @@ export default function UserDetailPage() {
                       </div>
                     </div>
 
-                    {/* Document image */}
+                    {/* Preview — blob-fetched, MIME-detected */}
                     {document.file_url && (
                       <div className="mt-3">
-                        <ImageGallery
-                          images={[document.file_url]}
-                          title={`${
-                            document.document_type || "ID Document"
-                          } ${document.side || ""}`}
-                          emptyMessage="No image available."
+                        <DocumentPreview
+                          url={document.file_url}
+                          title={`${document.document_type || "ID Document"} ${
+                            document.side || ""
+                          }`}
                         />
                       </div>
                     )}

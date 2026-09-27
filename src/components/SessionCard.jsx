@@ -16,12 +16,12 @@ export default function SessionCard({ session }) {
         </div>
         <span
           className={`text-[11px] px-2 py-0.5 rounded-full flex-shrink-0 ${
-            session.isActive
+            session.is_active
               ? "bg-[#EAF3DE] text-[#27500A]"
               : "bg-[#F1EFE8] text-[#444441]"
           }`}
         >
-          {session.isActive ? "Active" : "Ended"}
+          {session.is_active ? "Active" : "Ended"}
         </span>
       </div>
       <div className="grid grid-cols-2 gap-2 text-xs text-[#666] mt-2">
@@ -40,22 +40,22 @@ export default function SessionCard({ session }) {
         <div>
           <span className="text-[10px] uppercase tracking-wider">IP</span>
           <p className="text-[#111118] mt-0.5 font-mono truncate">
-            {session.ipAddress || "Unknown"}
+            {session.ip_address || "Unknown"}
           </p>
         </div>
         <div>
           <span className="text-[10px] uppercase tracking-wider">Login</span>
           <p className="text-[#111118] mt-0.5">
-            {session.loggedInAt
-              ? new Date(session.loggedInAt).toLocaleString()
+            {session.logged_in_at
+              ? new Date(session.logged_in_at).toLocaleString()
               : "-"}
           </p>
         </div>
-        {session.loggedOutAt && (
+        {session.logged_out_at && (
           <div className="col-span-2">
             <span className="text-[10px] uppercase tracking-wider">Logout</span>
             <p className="text-[#111118] mt-0.5">
-              {new Date(session.loggedOutAt).toLocaleString()}
+              {new Date(session.logged_out_at).toLocaleString()}
             </p>
           </div>
         )}
