@@ -1,3 +1,4 @@
+
 // src/utils/auth.js
 
 export const TOKEN_KEYS = {
@@ -13,27 +14,47 @@ export const TOKEN_KEYS = {
 const API_URL =
   import.meta.env.VITE_API_URL || "https://api.mar-haba.ly";
 
-// Save tokens
-export const saveTokens = (tokens) => {
-  console.log("💾 Saving tokens:", tokens);
+// ---------------------------------------------------------
+// SAVE TOKENS
+// ---------------------------------------------------------
 
-  if (tokens.accessToken) {
+export const saveTokens = (tokens = {}) => {
+  console.log("💾 Saving tokens");
+
+  const accessToken =
+    tokens.accessToken ||
+    tokens.access_token;
+
+  const refreshToken =
+    tokens.refreshToken ||
+    tokens.refresh_token;
+
+  const expiresIn =
+    tokens.expiresIn ??
+    tokens.expires_in;
+
+  if (accessToken) {
     localStorage.setItem(
       TOKEN_KEYS.ACCESS_TOKEN,
-      tokens.accessToken
+      accessToken
     );
   }
 
-  if (tokens.refreshToken) {
+  if (refreshToken) {
     localStorage.setItem(
       TOKEN_KEYS.REFRESH_TOKEN,
-      tokens.refreshToken
+      refreshToken
     );
   }
 
-  if (tokens.expiresIn) {
+  // Save access-token expiration time.
+  //
+  // IMPORTANT:
+  // This expiration belongs ONLY to the access token.
+  // We NEVER delete the refresh token just because this expires.
+  if (expiresIn !== undefined && expiresIn !== null) {
     const expiryTime =
-      Date.now() + tokens.expiresIn * 1000;
+      Date.now() + Number(expiresIn) * 1000;
 
     localStorage.setItem(
       TOKEN_KEYS.TOKEN_EXPIRY,
@@ -42,8 +63,13 @@ export const saveTokens = (tokens) => {
   }
 };
 
-// Save user data
+// ---------------------------------------------------------
+// SAVE USER
+// ---------------------------------------------------------
+
 export const saveUser = (user) => {
+  if (!user) return;
+
   console.log("💾 Saving user:", user);
 
   localStorage.setItem(
@@ -51,18 +77,25 @@ export const saveUser = (user) => {
     JSON.stringify(user)
   );
 
-  localStorage.setItem(
-    TOKEN_KEYS.USER_TYPE,
-    user.role
-  );
+  if (user.role) {
+    localStorage.setItem(
+      TOKEN_KEYS.USER_TYPE,
+      user.role
+    );
+  }
 
-  localStorage.setItem(
-    TOKEN_KEYS.USER_ID,
-    user.id
-  );
+  if (user.id) {
+    localStorage.setItem(
+      TOKEN_KEYS.USER_ID,
+      user.id
+    );
+  }
 };
 
-// Get tokens
+// ---------------------------------------------------------
+// GET TOKENS
+// ---------------------------------------------------------
+
 export const getAccessToken = () => {
   return localStorage.getItem(
     TOKEN_KEYS.ACCESS_TOKEN
@@ -80,22 +113,47 @@ export const getUser = () => {
     TOKEN_KEYS.USER
   );
 
-  return user ? JSON.parse(user) : null;
+  if (!user) return null;
+
+  try {
+    return JSON.parse(user);
+  } catch (error) {
+    console.error(
+      "❌ Invalid stored user data:",
+      error
+    );
+
+    localStorage.removeItem(TOKEN_KEYS.USER);
+
+    return null;
+  }
 };
 
-// Check if token is expired
+// ---------------------------------------------------------
+// ACCESS TOKEN EXPIRY
+// ---------------------------------------------------------
+
 export const isTokenExpired = () => {
   const expiry = localStorage.getItem(
     TOKEN_KEYS.TOKEN_EXPIRY
   );
 
-  if (!expiry) return true;
+  if (!expiry) {
+    // We don't know the expiry.
+    // Do NOT automatically destroy the session.
+    return false;
+  }
 
-  return Date.now() > parseInt(expiry);
+  return Date.now() >= Number(expiry);
 };
 
-// Clear all auth data
+// ---------------------------------------------------------
+// CLEAR AUTH DATA
+// ---------------------------------------------------------
+
 export const clearAuthData = () => {
+  console.log("🧹 Clearing authentication data");
+
   Object.values(TOKEN_KEYS).forEach((key) => {
     localStorage.removeItem(key);
   });
@@ -103,21 +161,29 @@ export const clearAuthData = () => {
   sessionStorage.clear();
 };
 
-// Auto-logout if token expired
-export const checkAuth = () => {
-  const token = getAccessToken();
+// ---------------------------------------------------------
+// CLEAR ONLY ACCESS TOKEN
+// ---------------------------------------------------------
+//
+// Useful when access token expires but refresh token
+// is still available.
+//
 
-  if (!token || isTokenExpired()) {
-    clearAuthData();
-    return false;
-  }
+export const clearAccessToken = () => {
+  localStorage.removeItem(
+    TOKEN_KEYS.ACCESS_TOKEN
+  );
 
-  return true;
+  localStorage.removeItem(
+    TOKEN_KEYS.TOKEN_EXPIRY
+  );
 };
 
-// Convert relative API URL to backend URL
+// ---------------------------------------------------------
+// BUILD API URL
+// ---------------------------------------------------------
+
 const buildApiUrl = (url) => {
-  // Already an absolute URL
   if (
     url.startsWith("http://") ||
     url.startsWith("https://")
@@ -125,96 +191,271 @@ const buildApiUrl = (url) => {
     return url;
   }
 
-  // Relative API URL
-  return `${API_URL}${url.startsWith("/") ? url : `/${url}`}`;
+  return `${API_URL}${
+    url.startsWith("/") ? url : `/${url}`
+  }`;
 };
 
-// Auth fetch wrapper
-export const authFetch = async (url, options = {}) => {
-  const token = getAccessToken();
+// ---------------------------------------------------------
+// REFRESH ACCESS TOKEN
+// ---------------------------------------------------------
 
-  // IMPORTANT:
-  // Convert /api/v1/... into https://api.mar-haba.ly/api/v1/...
-  const requestUrl = buildApiUrl(url);
+let refreshPromise = null;
 
-  const headers = {
-    "Content-Type": "application/json",
-    ...options.headers,
-  };
+export const refreshAccessToken = async () => {
+  const refreshToken = getRefreshToken();
 
-  if (token) {
-    headers["Authorization"] = `Bearer ${token}`;
+  if (!refreshToken) {
+    console.warn(
+      "⚠️ No refresh token available"
+    );
+
+    return null;
   }
 
-  console.log("🌐 API Request:", requestUrl);
+  // Prevent multiple simultaneous refresh requests.
+  if (refreshPromise) {
+    return refreshPromise;
+  }
 
-  let response = await fetch(requestUrl, {
-    ...options,
-    headers,
-  });
+  refreshPromise = (async () => {
+    try {
+      console.log(
+        "🔄 Refreshing access token..."
+      );
 
-  // If unauthorized, try to refresh token
-  if (response.status === 401) {
-    const refreshToken = getRefreshToken();
+      const refreshResponse = await fetch(
+        `${API_URL}/api/v1/auth/refresh`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            // IMPORTANT:
+            // Backend expects refresh_token
+            refresh_token: refreshToken,
+          }),
+        }
+      );
 
-    if (refreshToken) {
-      try {
-        const refreshResponse = await fetch(
-          `${API_URL}/api/v1/auth/refresh`,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              refreshToken,
-            }),
-          }
+      if (!refreshResponse.ok) {
+        console.error(
+          "❌ Refresh request failed:",
+          refreshResponse.status
         );
 
-        if (refreshResponse.ok) {
-          const data = await refreshResponse.json();
-
-          if (data.data?.tokens?.accessToken) {
-            // Save new token
-            saveTokens(data.data.tokens);
-
-            // Update authorization header
-            headers["Authorization"] =
-              `Bearer ${data.data.tokens.accessToken}`;
-
-            // Retry original request
-            response = await fetch(requestUrl, {
-              ...options,
-              headers,
-            });
-          }
-        } else {
-          clearAuthData();
-
-          window.location.href = "/login";
-
-          throw new Error(
-            "Session expired. Please login again."
-          );
-        }
-      } catch (error) {
-        clearAuthData();
-
-        window.location.href = "/login";
-
-        throw error;
+        return null;
       }
-    } else {
-      clearAuthData();
 
-      window.location.href = "/login";
+      const data =
+        await refreshResponse.json();
 
-      throw new Error(
-        "Please login to continue."
+      console.log(
+        "🔄 Refresh response received"
       );
+
+      // Support both possible response shapes:
+      //
+      // { data: { tokens: {...} } }
+      //
+      // OR
+      //
+      // { tokens: {...} }
+
+      const tokens =
+        data?.data?.tokens ||
+        data?.tokens;
+
+      if (!tokens?.accessToken &&
+          !tokens?.access_token) {
+        console.error(
+          "❌ Refresh response did not contain an access token"
+        );
+
+        return null;
+      }
+
+      saveTokens(tokens);
+
+      console.log(
+        "✅ Access token refreshed successfully"
+      );
+
+      return (
+        tokens.accessToken ||
+        tokens.access_token
+      );
+    } catch (error) {
+      console.error(
+        "❌ Token refresh error:",
+        error
+      );
+
+      return null;
+    } finally {
+      refreshPromise = null;
+    }
+  })();
+
+  return refreshPromise;
+};
+
+// ---------------------------------------------------------
+// CHECK AUTH
+// ---------------------------------------------------------
+//
+// IMPORTANT:
+// This does NOT delete auth data when the access token
+// expires.
+//
+// The refresh token may still be valid.
+//
+
+export const checkAuth = async () => {
+  const accessToken = getAccessToken();
+  const refreshToken = getRefreshToken();
+
+  // Nothing at all
+  if (!accessToken && !refreshToken) {
+    return false;
+  }
+
+  // Access token is still valid
+  if (accessToken && !isTokenExpired()) {
+    return true;
+  }
+
+  // Access token expired, but refresh token exists.
+  if (refreshToken) {
+    const newAccessToken =
+      await refreshAccessToken();
+
+    if (newAccessToken) {
+      return true;
+    }
+  }
+
+  // Only clear everything if the refresh token
+  // is actually unusable.
+  clearAuthData();
+
+  return false;
+};
+
+// ---------------------------------------------------------
+// AUTH FETCH
+// ---------------------------------------------------------
+
+export const authFetch = async (
+  url,
+  options = {}
+) => {
+  const requestUrl = buildApiUrl(url);
+
+  let token = getAccessToken();
+
+  const makeRequest = async (
+    accessToken
+  ) => {
+    const headers = {
+      "Content-Type": "application/json",
+      ...options.headers,
+    };
+
+    if (accessToken) {
+      headers.Authorization =
+        `Bearer ${accessToken}`;
+    }
+
+    console.log(
+      "🌐 API Request:",
+      requestUrl
+    );
+
+    return fetch(requestUrl, {
+      ...options,
+      headers,
+    });
+  };
+
+  // -------------------------------------------------------
+  // BEFORE REQUEST
+  // -------------------------------------------------------
+  //
+  // If access token is expired, refresh it BEFORE
+  // sending the request.
+  //
+
+  if (
+    token &&
+    isTokenExpired()
+  ) {
+    console.log(
+      "⏰ Access token expired. Refreshing..."
+    );
+
+    const newToken =
+      await refreshAccessToken();
+
+    if (newToken) {
+      token = newToken;
+    }
+  }
+
+  // -------------------------------------------------------
+  // FIRST REQUEST
+  // -------------------------------------------------------
+
+  let response =
+    await makeRequest(token);
+
+  // -------------------------------------------------------
+  // 401 → REFRESH → RETRY
+  // -------------------------------------------------------
+
+  if (response.status === 401) {
+    console.log(
+      "⚠️ API returned 401. Trying token refresh..."
+    );
+
+    const newToken =
+      await refreshAccessToken();
+
+    if (newToken) {
+      token = newToken;
+
+      console.log(
+        "🔁 Retrying original request..."
+      );
+
+      response =
+        await makeRequest(token);
+    }
+  }
+
+  // -------------------------------------------------------
+  // REFRESH FAILED
+  // -------------------------------------------------------
+
+  if (
+    response.status === 401
+  ) {
+    console.warn(
+      "❌ Authentication failed. Refresh token is no longer valid."
+    );
+
+    clearAuthData();
+
+    if (
+      window.location.pathname !==
+      "/login"
+    ) {
+      window.location.href =
+        "/login";
     }
   }
 
   return response;
 };
+

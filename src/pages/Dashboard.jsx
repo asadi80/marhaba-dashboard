@@ -97,37 +97,67 @@ export default function Dashboard() {
   };
 
   // ─── Fetch users ──────────────────────────────────────────────────────────
-  const fetchUsers = async () => {
-    setLoading(true);
-    try {
-      const roleParam = activeTab !== "all" ? `?role=${activeTab}` : "";
-      const res = await authFetch(`https://api.mar-haba.ly/api/v1/dashboard/users${roleParam}`);
-      
-      if (!res) {
-        throw new Error("No response from server");
-      }
+const fetchUsers = async () => {
+  setLoading(true);
 
-      const data = await res.json();
-      console.log("Users response:", data);
-      
-      // ✅ FIX: Users might be at data.data or data.users
-      if (data.success) {
-        const usersData = data.data?.users || data.users || [];
-        const usersByRoleData = data.data?.usersByRole || data.usersByRole || {};
-        
-        setUsers(usersData);
-        setUsersByRole(usersByRoleData);
-      } else {
-        throw new Error(data.message || "Failed to fetch users");
-      }
-    } catch (error) {
-      console.error("Users fetch error:", error);
-      showNotification("Error fetching users", "error");
-      setUsers([]);
-      setUsersByRole({});
+  try {
+    const roleParam =
+      activeTab !== "all" ? `?role=${activeTab}` : "";
+
+    const url =
+      `https://api.mar-haba.ly/api/v1/dashboard/users${roleParam}`;
+
+    console.log("[API USERS] REQUEST:", {
+      method: "GET",
+      url,
+      activeTab,
+    });
+
+    const res = await authFetch(url);
+
+    console.log("[API USERS] STATUS:", res.status);
+
+    const data = await res.json();
+
+    console.log("[API USERS] RESPONSE:", data);
+
+    if (data.success) {
+      const usersData =
+        data.data?.users ||
+        data.users ||
+        [];
+
+      const usersByRoleData =
+        data.data?.usersByRole ||
+        data.usersByRole ||
+        {};
+
+      console.log("[API USERS] PARSED:", {
+        usersCount: usersData.length,
+        users: usersData,
+        usersByRole: usersByRoleData,
+      });
+
+      setUsers(usersData);
+      setUsersByRole(usersByRoleData);
+    } else {
+      console.error("[API USERS] API ERROR:", data);
+
+      throw new Error(
+        data.message || "Failed to fetch users"
+      );
     }
+  } catch (error) {
+    console.error("[API USERS] REQUEST ERROR:", error);
+
+    showNotification("Error fetching users", "error");
+
+    setUsers([]);
+    setUsersByRole({});
+  } finally {
     setLoading(false);
-  };
+  }
+};
 
   // ─── Create admin ─────────────────────────────────────────────────────────
 const handleCreateAdmin = async (formData) => {
