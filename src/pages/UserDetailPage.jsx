@@ -27,7 +27,7 @@ import SessionCard from "../components/SessionCard";
 import EventsCard from "../components/EventsCard";
 import ImageGallery from "../components/ImageGallery";
 import SubscriptionPaymentCard from "../components/SubscriptionPaymentCard";
-import IDDocumentActions from "../components/IDDocumentactions";
+import IDDocumentActions from "../components/IdDocumentactions";
 import { normalizeUser } from "../utils/normalizeUser";
 
 // ─────────────────────────────────────────────────────────────────────────
