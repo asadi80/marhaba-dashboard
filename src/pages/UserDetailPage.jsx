@@ -27,7 +27,8 @@ import SessionCard from "../components/SessionCard";
 import EventsCard from "../components/EventsCard";
 import ImageGallery from "../components/ImageGallery";
 import SubscriptionPaymentCard from "../components/SubscriptionPaymentCard";
-import IDDocumentActions from "../components/IdDocumentactions";
+import IDDocumentActions from "../components/IDDocumentactions";
+import { normalizeUser } from "../utils/normalizeUser";
 
 // ─────────────────────────────────────────────────────────────────────────
 // DocumentPreview
@@ -36,6 +37,7 @@ import IDDocumentActions from "../components/IdDocumentactions";
 // renders it inline. Images are converted to a data URL so they always
 // display — even when the URL has no file extension.
 // ─────────────────────────────────────────────────────────────────────────
+
 function DocumentPreview({ url, title }) {
   const [blobUrl, setBlobUrl] = useState(null);
   const [mime, setMime] = useState("");
@@ -53,59 +55,157 @@ function DocumentPreview({ url, title }) {
     let cancelled = false;
     let objectUrl = null;
 
-    (async () => {
+    const loadFile = async () => {
       setLoading(true);
       setError(null);
       setBlobUrl(null);
+      setMime("");
       setTextContent(null);
 
       try {
-        const res = await authFetch(url);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        console.log("[DocumentPreview] Loading:", url);
 
-        // Read MIME type — from Content-Type header, falling back to
-        // the blob's own type.
-        let contentType =
-          res.headers.get("content-type")?.split(";")[0].trim() || "";
+        const res = await authFetch(url);
+
+        console.log(
+          "[DocumentPreview] Response:",
+          res.status,
+          res.statusText,
+          res.headers.get("content-type"),
+        );
+
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}`);
+        }
 
         const blob = await res.blob();
-        if (!contentType) contentType = blob.type || "application/octet-stream";
 
         if (cancelled) return;
 
-        // For text-like files, read the content directly.
+        let contentType =
+          res.headers.get("content-type")?.split(";")[0].trim().toLowerCase() ||
+          blob.type?.toLowerCase() ||
+          "";
+
+        console.log("[DocumentPreview] Blob:", {
+          type: blob.type,
+          size: blob.size,
+          contentType,
+        });
+
+        /*
+         * IMPORTANT:
+         *
+         * Sometimes the web server sends:
+         * application/octet-stream
+         * or another incorrect MIME type.
+         *
+         * Detect the type from the filename as a fallback.
+         */
+
+        if (
+          !contentType ||
+          contentType === "application/octet-stream" ||
+          contentType === "binary/octet-stream"
+        ) {
+          const cleanUrl = url.split("?")[0].toLowerCase();
+
+          if (cleanUrl.endsWith(".jpg") || cleanUrl.endsWith(".jpeg")) {
+            contentType = "image/jpeg";
+          } else if (cleanUrl.endsWith(".png")) {
+            contentType = "image/png";
+          } else if (cleanUrl.endsWith(".webp")) {
+            contentType = "image/webp";
+          } else if (cleanUrl.endsWith(".gif")) {
+            contentType = "image/gif";
+          } else if (cleanUrl.endsWith(".svg")) {
+            contentType = "image/svg+xml";
+          } else if (cleanUrl.endsWith(".pdf")) {
+            contentType = "application/pdf";
+          } else if (cleanUrl.endsWith(".mp4")) {
+            contentType = "video/mp4";
+          } else if (cleanUrl.endsWith(".webm")) {
+            contentType = "video/webm";
+          } else if (cleanUrl.endsWith(".mp3")) {
+            contentType = "audio/mpeg";
+          }
+        }
+
+        /*
+         * SECURITY / SERVER ERROR CHECK
+         *
+         * If the API accidentally returns HTML instead of the file,
+         * don't try to render it as an image.
+         */
+        if (
+          contentType === "text/html" ||
+          contentType === "text/html; charset=utf-8"
+        ) {
+          throw new Error(
+            "The server returned an HTML page instead of the requested file.",
+          );
+        }
+
+        /*
+         * TEXT FILES
+         */
         if (
           contentType.startsWith("text/") ||
           contentType === "application/json" ||
           contentType === "application/xml"
         ) {
           const text = await blob.text();
+
           if (!cancelled) {
             setMime(contentType);
             setTextContent(text);
           }
-        } else {
-          // Everything else: create an object URL the browser can render.
-          objectUrl = URL.createObjectURL(blob);
-          if (!cancelled) {
-            setMime(contentType);
-            setBlobUrl(objectUrl);
-          }
+
+          return;
+        }
+
+        /*
+         * ALL OTHER FILES
+         *
+         * Create a browser object URL.
+         */
+        objectUrl = URL.createObjectURL(blob);
+
+        if (!cancelled) {
+          setMime(contentType);
+          setBlobUrl(objectUrl);
+
+          console.log("[DocumentPreview] Object URL created:", objectUrl);
+          console.log("[DocumentPreview] Final MIME:", contentType);
         }
       } catch (err) {
-        if (!cancelled) setError(err.message || "Failed to load file");
+        console.error("[DocumentPreview] Failed:", err);
+
+        if (!cancelled) {
+          setError(err?.message || "Failed to load the document.");
+        }
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
-    })();
+    };
+
+    loadFile();
 
     return () => {
       cancelled = true;
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
+
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+      }
     };
   }, [url]);
 
-  // ── Loading ──
+  // ---------------------------------------------------------
+  // Loading
+  // ---------------------------------------------------------
+
   if (loading) {
     return (
       <div className="border border-black/[0.06] rounded-lg p-4 bg-[#f7f6f2] text-[11px] text-[#999]">
@@ -114,42 +214,83 @@ function DocumentPreview({ url, title }) {
     );
   }
 
-  // ── Error ──
+  // ---------------------------------------------------------
+  // Error
+  // ---------------------------------------------------------
+
   if (error) {
     return (
       <div className="border border-black/[0.06] rounded-lg p-4 bg-[#FCEBEB] text-[11px] text-[#791F1F]">
-        Could not load file: {error}.{" "}
+        <div className="font-medium mb-1">Could not load file</div>
+
+        <div className="mb-3">{error}</div>
+
         <a
           href={url}
           target="_blank"
           rel="noopener noreferrer"
-          className="underline"
+          className="inline-block underline text-[#185FA5]"
         >
-          Open directly ↗
+          Open file directly ↗
         </a>
       </div>
     );
   }
 
-  // ── Image (any image/* mime) — rendered as a data/object URL ──
-  if (mime.startsWith("image/")) {
+  // ---------------------------------------------------------
+  // IMAGE
+  // ---------------------------------------------------------
+
+  if (mime.startsWith("image/") && blobUrl) {
     return (
-      <ImageGallery
-        images={[blobUrl]}
-        title={title || "Image"}
-        emptyMessage="No image available."
-      />
+      <div className="border border-black/[0.06] rounded-lg overflow-hidden bg-white">
+        <div className="flex items-center justify-between px-3 py-2 bg-[#f7f6f2] border-b border-black/[0.06]">
+          <span className="text-[11px] font-medium text-[#111118]">
+            🖼️ {title || "Image"}
+          </span>
+
+          <a
+            href={blobUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[11px] text-[#185FA5] hover:underline"
+          >
+            Open ↗
+          </a>
+        </div>
+
+        <div className="p-3 bg-white flex justify-center">
+          <img
+            src={blobUrl}
+            alt={title || "Document"}
+            className="max-w-full max-h-[500px] object-contain rounded-md"
+            onError={(event) => {
+              console.error("[DocumentPreview] Image failed to render:", {
+                url,
+                blobUrl,
+                mime,
+              });
+
+              event.currentTarget.style.display = "none";
+            }}
+          />
+        </div>
+      </div>
     );
   }
 
-  // ── PDF ──
-  if (mime === "application/pdf") {
+  // ---------------------------------------------------------
+  // PDF
+  // ---------------------------------------------------------
+
+  if (mime === "application/pdf" && blobUrl) {
     return (
       <div className="border border-black/[0.06] rounded-lg overflow-hidden">
         <div className="flex items-center justify-between px-3 py-2 bg-[#f7f6f2] border-b border-black/[0.06]">
           <span className="text-[11px] font-medium text-[#111118]">
             📄 PDF Document
           </span>
+
           <a
             href={blobUrl}
             target="_blank"
@@ -159,6 +300,7 @@ function DocumentPreview({ url, title }) {
             Open in new tab ↗
           </a>
         </div>
+
         <iframe
           src={blobUrl}
           title={title || "PDF"}
@@ -168,7 +310,10 @@ function DocumentPreview({ url, title }) {
     );
   }
 
-  // ── Text-like ──
+  // ---------------------------------------------------------
+  // TEXT
+  // ---------------------------------------------------------
+
   if (textContent !== null) {
     return (
       <div className="border border-black/[0.06] rounded-lg overflow-hidden">
@@ -176,15 +321,8 @@ function DocumentPreview({ url, title }) {
           <span className="text-[11px] font-medium text-[#111118]">
             📝 Text Document ({mime})
           </span>
-          <a
-            href={blobUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-[11px] text-[#185FA5] hover:underline"
-          >
-            Open raw ↗
-          </a>
         </div>
+
         <pre className="p-3 max-h-[480px] overflow-auto text-[11px] text-[#111118] bg-white whitespace-pre-wrap break-words">
           {textContent}
         </pre>
@@ -192,8 +330,11 @@ function DocumentPreview({ url, title }) {
     );
   }
 
-  // ── Video ──
-  if (mime.startsWith("video/")) {
+  // ---------------------------------------------------------
+  // VIDEO
+  // ---------------------------------------------------------
+
+  if (mime.startsWith("video/") && blobUrl) {
     return (
       <div className="border border-black/[0.06] rounded-lg overflow-hidden bg-black">
         <video
@@ -206,19 +347,26 @@ function DocumentPreview({ url, title }) {
     );
   }
 
-  // ── Audio ──
-  if (mime.startsWith("audio/")) {
+  // ---------------------------------------------------------
+  // AUDIO
+  // ---------------------------------------------------------
+
+  if (mime.startsWith("audio/") && blobUrl) {
     return (
       <div className="border border-black/[0.06] rounded-lg p-4 bg-[#f7f6f2]">
         <p className="text-[11px] font-medium text-[#111118] mb-2">
           🎵 Audio File ({mime})
         </p>
+
         <audio src={blobUrl} controls className="w-full" />
       </div>
     );
   }
 
-  // ── Office (Microsoft viewer needs a public URL, so fall back to raw) ──
+  // ---------------------------------------------------------
+  // OFFICE DOCUMENTS
+  // ---------------------------------------------------------
+
   const officeMimes = [
     "application/msword",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -227,20 +375,24 @@ function DocumentPreview({ url, title }) {
     "application/vnd.ms-powerpoint",
     "application/vnd.openxmlformats-officedocument.presentationml.presentation",
   ];
+
   if (officeMimes.includes(mime)) {
     return (
       <div className="border border-black/[0.06] rounded-lg p-4 bg-[#f7f6f2] flex items-center justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
           <span className="text-2xl flex-shrink-0">📎</span>
+
           <div className="min-w-0">
             <p className="text-[12px] font-medium text-[#111118] truncate">
-              Office Document ({mime})
+              Office Document
             </p>
+
             <p className="text-[10px] text-[#999] truncate">
-              Inline Office preview requires a public file URL.
+              Inline Office preview is not available.
             </p>
           </div>
         </div>
+
         <a
           href={url}
           target="_blank"
@@ -253,20 +405,26 @@ function DocumentPreview({ url, title }) {
     );
   }
 
-  // ── Fallback ──
+  // ---------------------------------------------------------
+  // FALLBACK
+  // ---------------------------------------------------------
+
   return (
     <div className="border border-black/[0.06] rounded-lg p-4 bg-[#f7f6f2] flex items-center justify-between gap-3">
       <div className="flex items-center gap-3 min-w-0">
         <span className="text-2xl flex-shrink-0">📎</span>
+
         <div className="min-w-0">
           <p className="text-[12px] font-medium text-[#111118] truncate">
             {mime || "Unknown file type"}
           </p>
+
           <p className="text-[10px] text-[#999] truncate">
             Preview not available for this file type.
           </p>
         </div>
       </div>
+
       <a
         href={url}
         target="_blank"
@@ -354,19 +512,20 @@ export default function UserDetailPage() {
     }
   };
 
+
   const fetchTargetUser = async () => {
     setLoading(true);
     try {
       const res = await authFetch(`/api/v1/dashboard/users/${userId}`);
       if (!res) throw new Error("No response from server");
       const data = await res.json();
-      console.log("user info", data);
       if (!res.ok) throw new Error(data.message || "Failed to load user");
-      const user = data.data?.user || data.user || data;
-      setTargetUser(user);
 
-      const payments = user.host_subscription_payments || [];
-      setSubscriptionPayments(payments);
+      const rawUser = data.data?.user ?? data.user ?? data;
+      const user = normalizeUser(rawUser);
+
+      setTargetUser(user);
+      setSubscriptionPayments(user.host_subscription_payments);
 
       setForm({
         name: user.name || "",
@@ -420,7 +579,7 @@ export default function UserDetailPage() {
       const res = await authFetch(`/api/v1/dashboard/users/${userId}/sessions`);
       if (res && res.ok) {
         const data = await res.json();
-                console.log("session",data);
+        console.log("session", data);
 
         setUserSession(data.sessions || []);
       }
@@ -435,7 +594,7 @@ export default function UserDetailPage() {
       if (res && res.ok) {
         const data = await res.json();
         // console.log("event",data);
-        
+
         setUserEvents(data.events || []);
       }
     } catch (err) {
@@ -790,7 +949,8 @@ export default function UserDetailPage() {
                     {targetUser?.role === "host" &&
                       form.status === "pending" && (
                         <p className="text-[11px] text-[#633806] mt-1">
-                          ⚠️ Pending hosts need to upload ID documents.
+                          ⚠️ Pending hosts need to upload ID documents &
+                          Payment.
                         </p>
                       )}
                     {form.status === "suspended" && (
@@ -1052,9 +1212,7 @@ export default function UserDetailPage() {
                         <p className="text-[11px] text-[#999]">
                           Uploaded:{" "}
                           {document.created_at
-                            ? new Date(
-                                document.created_at,
-                              ).toLocaleDateString()
+                            ? new Date(document.created_at).toLocaleDateString()
                             : "N/A"}
                         </p>
                       </div>
@@ -1063,16 +1221,12 @@ export default function UserDetailPage() {
                         <IDDocumentActions
                           documentId={document.id}
                           status={document.status || "pending"}
-                          documentType={
-                            document.document_type || "ID Document"
-                          }
+                          documentType={document.document_type || "ID Document"}
                           side={document.side}
                           isAdmin={isAdmin}
                           onAction={() => {
                             setLoading(true);
-                            fetchTargetUser().finally(() =>
-                              setLoading(false),
-                            );
+                            fetchTargetUser().finally(() => setLoading(false));
                           }}
                         />
                       </div>
