@@ -99,76 +99,44 @@ function formatValue(value, column = "") {
   }
 
   // IMAGE ARRAYS
-  if (Array.isArray(value)) {
-    const isImagesColumn = column.toLowerCase() === "images";
-
-    if (isImagesColumn) {
-      if (value.length === 0) {
-        return <span className="null-value">No images</span>;
-      }
-
-      return (
-        <div className="database-image-gallery">
-          {value.map((item, index) => {
-            const rawUrl =
-              typeof item === "string"
-                ? item
-                : item?.url || item?.path || item?.src || "";
-
-            const imageUrl = normalizeImageUrl(rawUrl);
-
-            return (
-              <div className="database-image-item" key={index}>
-                {imageUrl && (
-                  <a
-                    href={imageUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <img
-                      src={imageUrl}
-                      alt={`Image ${index + 1}`}
-                      className="database-thumbnail"
-                      loading="lazy"
-                      onError={(e) => {
-                        console.error("Failed to load image:", imageUrl);
-                        e.currentTarget.classList.add("image-load-error");
-                      }}
-                    />
-                  </a>
-                )}
-
-                <span className="database-image-index">Image {index + 1}</span>
-
-                <a
-                  className="database-image-url"
-                  href={imageUrl || undefined}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  {rawUrl || "Invalid image URL"}
-                </a>
-              </div>
-            );
-          })}
-        </div>
-      );
-    }
-
+if (Array.isArray(value)) {
+  // Show images only in the record details modal
+  if (column.toLowerCase() === "images") {
     return (
-      <div className="database-array-details">
-        {value.map((item, index) => (
-          <div key={index} className="database-array-item">
-            {typeof item === "object" && item !== null
-              ? JSON.stringify(item, null, 2)
-              : String(item)}
-          </div>
-        ))}
+      <div className="database-image-gallery">
+        {value.map((item, index) => {
+          const imageUrl = normalizeImageUrl(
+            typeof item === "string" ? item : item?.url || item?.path || item?.src
+          );
+
+          return imageUrl ? (
+            <div className="database-image-item" key={index}>
+              <img
+                src={imageUrl}
+                alt={`Image ${index + 1}`}
+                className="database-thumbnail"
+              />
+              <a href={imageUrl} target="_blank" rel="noreferrer">
+                {imageUrl}
+              </a>
+            </div>
+          ) : null;
+        })}
       </div>
     );
   }
+
+  // Display other arrays as readable text, not character by character
+  return (
+    <span className="array-value">
+      {value.map((item) => {
+        if (item === null || item === undefined) return "";
+        if (typeof item === "object") return JSON.stringify(item);
+        return String(item);
+      }).join(", ")}
+    </span>
+  );
+}
 
   // SINGLE IMAGE URL
   if (typeof value === "string" && isImageUrl(value)) {
