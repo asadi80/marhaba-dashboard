@@ -1,4 +1,3 @@
-
 import React, { useEffect, useMemo, useState } from "react";
 import "./DatabaseExplorer.css";
 import { authFetch } from "../utils/auth";
@@ -77,10 +76,8 @@ function isImageUrl(value) {
 
   return (
     /^https?:\/\//i.test(url) &&
-    (
-      /\/uploads\//i.test(url) ||
-      /\.(jpg|jpeg|png|webp|gif|avif|svg)(\?.*)?$/i.test(url)
-    )
+    (/\/uploads\//i.test(url) ||
+      /\.(jpg|jpeg|png|webp|gif|avif|svg)(\?.*)?$/i.test(url))
   );
 }
 
@@ -142,9 +139,7 @@ function formatValue(value, column = "") {
                   </a>
                 )}
 
-                <span className="database-image-index">
-                  Image {index + 1}
-                </span>
+                <span className="database-image-index">Image {index + 1}</span>
 
                 <a
                   className="database-image-url"
@@ -213,19 +208,11 @@ function formatValue(value, column = "") {
   }
 
   if (typeof value === "object") {
-    return (
-      <pre className="json-value">
-        {JSON.stringify(value, null, 2)}
-      </pre>
-    );
+    return <pre className="json-value">{JSON.stringify(value, null, 2)}</pre>;
   }
 
   if (typeof value === "string" && value.length > 100) {
-    return (
-      <span title={value}>
-        {value.substring(0, 100)}...
-      </span>
-    );
+    return <span title={value}>{value.substring(0, 100)}...</span>;
   }
 
   return String(value);
@@ -274,9 +261,7 @@ export default function DatabaseExplorer() {
       setLoadingTables(true);
       setError("");
 
-      const response = await authFetch(
-        `${API_URL}/api/v1/database/overview`
-      );
+      const response = await authFetch(`${API_URL}/api/v1/database/overview`);
 
       const result = await response.json();
 
@@ -304,7 +289,7 @@ export default function DatabaseExplorer() {
       setSelectedRow(null);
 
       const response = await authFetch(
-        `${API_URL}/api/v1/database/table/${encodeURIComponent(table)}`
+        `${API_URL}/api/v1/database/table/${encodeURIComponent(table)}`,
       );
 
       const result = await response.json();
@@ -322,7 +307,7 @@ export default function DatabaseExplorer() {
           data.map((listing) => ({
             id: listing.id,
             images: listing.images,
-          }))
+          })),
         );
       }
 
@@ -355,9 +340,7 @@ export default function DatabaseExplorer() {
 
     if (!value) return tables;
 
-    return tables.filter((table) =>
-      table.name.toLowerCase().includes(value)
-    );
+    return tables.filter((table) => table.name.toLowerCase().includes(value));
   }, [tables, search]);
 
   /* =========================================
@@ -371,8 +354,8 @@ export default function DatabaseExplorer() {
 
     return rows.filter((row) =>
       Object.values(row).some((value) =>
-        JSON.stringify(value).toLowerCase().includes(searchValue)
-      )
+        JSON.stringify(value).toLowerCase().includes(searchValue),
+      ),
     );
   }, [rows, rowSearch]);
 
@@ -400,18 +383,16 @@ export default function DatabaseExplorer() {
 
   return (
     <div className="database-page">
-
       {/* HEADER */}
       <div className="database-header">
         <div>
-          <div className="database-eyebrow">
-            ADMIN DATABASE
-          </div>
+          <div className="database-eyebrow">ADMIN DATABASE</div>
 
           <h1>Database Explorer</h1>
 
           <p>
-            View your Prisma database tables and the actual records stored inside them.
+            View your Prisma database tables and the actual records stored
+            inside them.
           </p>
         </div>
 
@@ -420,10 +401,7 @@ export default function DatabaseExplorer() {
           onClick={handleRefresh}
           disabled={loadingTables || loadingRows}
         >
-          ↻{" "}
-          {loadingTables || loadingRows
-            ? "Refreshing..."
-            : "Refresh"}
+          ↻ {loadingTables || loadingRows ? "Refreshing..." : "Refresh"}
         </button>
       </div>
 
@@ -441,7 +419,6 @@ export default function DatabaseExplorer() {
 
       {/* DATABASE LAYOUT */}
       <div className="database-layout">
-
         {/* SIDEBAR */}
         <aside className="database-sidebar">
           <div className="sidebar-heading">
@@ -485,9 +462,7 @@ export default function DatabaseExplorer() {
                     <span className="database-table-info">
                       <strong>{table.name}</strong>
 
-                      <small>
-                        {table.count ?? 0} records
-                      </small>
+                      <small>{table.count ?? 0} records</small>
                     </span>
 
                     <span className="database-arrow">›</span>
@@ -500,7 +475,6 @@ export default function DatabaseExplorer() {
 
         {/* MAIN CONTENT */}
         <main className="database-main">
-
           {/* TABLE HEADER */}
           <div className="selected-table-header">
             <div className="selected-table-title">
@@ -511,15 +485,11 @@ export default function DatabaseExplorer() {
               <div>
                 <h2>{selectedTable}</h2>
 
-                <p>
-                  {currentInfo?.description || "Database table"}
-                </p>
+                <p>{currentInfo?.description || "Database table"}</p>
               </div>
             </div>
 
-            <div className="record-count">
-              {rows.length} records
-            </div>
+            <div className="record-count">{rows.length} records</div>
           </div>
 
           {/* ROW SEARCH */}
@@ -536,9 +506,7 @@ export default function DatabaseExplorer() {
             </div>
 
             <div className="toolbar-info">
-              Showing{" "}
-              <strong>{filteredRows.length}</strong>{" "}
-              of{" "}
+              Showing <strong>{filteredRows.length}</strong> of{" "}
               <strong>{rows.length}</strong>
             </div>
           </div>
@@ -563,10 +531,7 @@ export default function DatabaseExplorer() {
 
                 <p>No records match "{rowSearch}".</p>
 
-                <button
-                  type="button"
-                  onClick={() => setRowSearch("")}
-                >
+                <button type="button" onClick={() => setRowSearch("")}>
                   Clear search
                 </button>
               </div>
@@ -589,7 +554,9 @@ export default function DatabaseExplorer() {
                       >
                         {columns.map((column) => (
                           <td key={column}>
-                            {formatValue(row[column], column)}
+                            {column.toLowerCase() === "images"
+                              ? `${Array.isArray(row[column]) ? row[column].length : 0} images`
+                              : formatValue(row[column], column)}
                           </td>
                         ))}
                       </tr>
@@ -604,15 +571,8 @@ export default function DatabaseExplorer() {
 
       {/* RECORD DETAILS MODAL */}
       {selectedRow && (
-        <div
-          className="details-overlay"
-          onClick={() => setSelectedRow(null)}
-        >
-          <div
-            className="details-panel"
-            onClick={(e) => e.stopPropagation()}
-          >
-
+        <div className="details-overlay" onClick={() => setSelectedRow(null)}>
+          <div className="details-panel" onClick={(e) => e.stopPropagation()}>
             {/* HEADER */}
             <div className="details-header">
               <div>
@@ -635,13 +595,10 @@ export default function DatabaseExplorer() {
                 <div className="detail-field" key={key}>
                   <label>{key}</label>
 
-                  <div className="detail-value">
-                    {formatValue(value, key)}
-                  </div>
+                  <div className="detail-value">{formatValue(value, key)}</div>
                 </div>
               ))}
             </div>
-
           </div>
         </div>
       )}
