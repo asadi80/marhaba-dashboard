@@ -512,7 +512,6 @@ export default function UserDetailPage() {
     }
   };
 
-
   const fetchTargetUser = async () => {
     setLoading(true);
     try {
@@ -564,13 +563,27 @@ export default function UserDetailPage() {
   const fetchUserBookings = async () => {
     try {
       const res = await authFetch(`/api/v1/dashboard/users/${userId}/bookings`);
-      if (res && res.ok) {
-        const data = await res.json();
-        setUserBookings(data.bookingsAsGuest || []);
-        setListingsBookings(data.bookingsAsHost || []);
+
+      if (!res || !res.ok) {
+        const errorData = res ? await res.json().catch(() => ({})) : {};
+        throw new Error(errorData.message || "Failed to load user bookings");
       }
-    } catch (err) {
-      console.error(err);
+
+      const data = await res.json();
+
+      console.log("[UserDetailPage] Booking response:", data);
+
+      setUserBookings(
+        Array.isArray(data.bookingsAsGuest) ? data.bookingsAsGuest : [],
+      );
+
+      setListingsBookings(
+        Array.isArray(data.bookingsAsHost) ? data.bookingsAsHost : [],
+      );
+    } catch (error) {
+      console.error("Failed to fetch user bookings:", error);
+      setUserBookings([]);
+      setListingsBookings([]);
     }
   };
 
@@ -1036,11 +1049,35 @@ export default function UserDetailPage() {
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {userBookings.map((booking) => (
-                    <BookingCard
-                      key={booking.id}
-                      booking={booking}
-                      type="guest"
-                    />
+                    <div key={booking.id} className="booking-card">
+                      <h3>{booking.listing?.title ?? "Unknown listing"}</h3>
+
+                      <p>
+                        <strong>Check-in:</strong>{" "}
+                        {booking.check_in
+                          ? new Date(booking.check_in).toLocaleDateString()
+                          : "Not available"}
+                      </p>
+
+                      <p>
+                        <strong>Check-out:</strong>{" "}
+                        {booking.check_out
+                          ? new Date(booking.check_out).toLocaleDateString()
+                          : "Not available"}
+                      </p>
+
+                      <p>
+                        <strong>Status:</strong> {booking.status}
+                      </p>
+
+                      <p>
+                        <strong>Total price:</strong> {booking.total_price} LYD
+                      </p>
+
+                      <p>
+                        <strong>Guests:</strong> {booking.guests}
+                      </p>
+                    </div>
                   ))}
                 </div>
               )}

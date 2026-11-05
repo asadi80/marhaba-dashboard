@@ -1,14 +1,10 @@
+
 .database-page {
   min-height: 100vh;
   background: #f6f8fb;
   padding: 30px;
   color: #172033;
-  font-family:
-    Inter,
-    -apple-system,
-    BlinkMacSystemFont,
-    "Segoe UI",
-    sans-serif;
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
 .database-header {
@@ -52,6 +48,11 @@
   background: #f8fafc;
 }
 
+.refresh-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .database-error {
   max-width: 1550px;
   margin: 0 auto 18px;
@@ -62,10 +63,20 @@
   color: #a54150;
   display: flex;
   gap: 12px;
+  align-items: center;
 }
 
 .database-error span {
   color: #c15c68;
+  flex: 1;
+}
+
+.database-error button {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-size: 20px;
+  cursor: pointer;
 }
 
 .database-layout {
@@ -178,8 +189,7 @@
   font-size: 12px;
 }
 
-.database-table-button.active
-  .database-table-info strong {
+.database-table-button.active .database-table-info strong {
   color: #14775e;
 }
 
@@ -192,8 +202,7 @@
   color: #adb5c1;
 }
 
-.database-table-button.active
-  .database-arrow {
+.database-table-button.active .database-arrow {
   color: #18866b;
 }
 
@@ -312,6 +321,7 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  vertical-align: top;
 }
 
 .data-table tbody tr {
@@ -320,6 +330,86 @@
 
 .data-table tbody tr:hover {
   background: #f8fbfa;
+}
+
+/* =========================================
+   DATABASE IMAGES
+========================================= */
+
+.database-image-gallery {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 14px;
+  min-width: 200px;
+  padding: 5px 0;
+}
+
+.database-image-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  width: 150px;
+  min-width: 0;
+}
+
+.database-thumbnail {
+  display: block;
+  width: 150px;
+  height: 105px;
+  object-fit: cover;
+  border-radius: 9px;
+  border: 1px solid #e4e9ef;
+  background: #f3f5f8;
+  transition: transform 0.2s ease;
+}
+
+.database-image-item a:first-child:hover .database-thumbnail {
+  transform: scale(1.03);
+}
+
+.database-image-index {
+  color: #667085;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.database-image-url {
+  display: block;
+  width: 100%;
+  color: #168477;
+  font-size: 10px;
+  line-height: 1.5;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-decoration: none;
+}
+
+.database-image-url:hover {
+  text-decoration: underline;
+}
+
+.image-load-error {
+  border: 1px solid #e5a5a5;
+  background: #fff1f1;
+  object-fit: contain;
+}
+
+/* Array values */
+.database-array-details {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.database-array-item {
+  padding: 8px 10px;
+  background: #f5f6f8;
+  border-radius: 6px;
+  overflow-wrap: anywhere;
+  white-space: normal;
+  font-size: 11px;
 }
 
 .null-value {
@@ -360,6 +450,8 @@
   background: #f7f9fb;
   padding: 7px;
   border-radius: 5px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .loading,
@@ -411,6 +503,10 @@
   font-size: 12px;
 }
 
+/* =========================================
+   DETAILS MODAL
+========================================= */
+
 .details-overlay {
   position: fixed;
   inset: 0;
@@ -427,6 +523,7 @@
   box-shadow: -10px 0 40px rgba(0, 0, 0, 0.1);
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .details-header {
@@ -435,6 +532,7 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-shrink: 0;
 }
 
 .details-header span {
@@ -463,6 +561,7 @@
 .details-body {
   padding: 20px;
   overflow-y: auto;
+  flex: 1;
 }
 
 .detail-field {
@@ -478,11 +577,36 @@
   margin-bottom: 6px;
 }
 
-.detail-field > div {
+.detail-field > .detail-value {
   color: #344054;
   font-size: 12px;
   word-break: break-word;
+  white-space: normal;
 }
+
+/* Larger images in the details modal */
+.details-body .database-image-gallery {
+  gap: 14px;
+}
+
+.details-body .database-image-item {
+  width: 100%;
+  max-width: 220px;
+}
+
+.details-body .database-thumbnail {
+  width: 210px;
+  height: 145px;
+}
+
+.details-body .database-image-url {
+  max-width: 210px;
+  font-size: 11px;
+}
+
+/* =========================================
+   RESPONSIVE
+========================================= */
 
 @media (max-width: 900px) {
   .database-page {
@@ -509,5 +633,33 @@
 
   .row-search {
     width: auto;
+  }
+}
+
+@media (max-width: 600px) {
+  .database-header {
+    flex-direction: column;
+    gap: 15px;
+  }
+
+  .database-header h1 {
+    font-size: 25px;
+  }
+
+  .database-table-list {
+    grid-template-columns: 1fr;
+  }
+
+  .selected-table-header {
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .details-panel {
+    width: 100%;
+  }
+
+  .database-image-gallery {
+    gap: 10px;
   }
 }
